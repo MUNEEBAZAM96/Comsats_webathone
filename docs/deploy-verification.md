@@ -86,20 +86,29 @@ Record date, URL host (not secrets), and result:
 
 Production URL: https://comsats-webathone.vercel.app
 
-- [ ] Sidebar icons are distinct per role (ShieldCheck for proctor exams, Award for student results, ChartNoAxesCombined for performance, Library for question bank, FileBarChart for staff results)
-- [ ] StatCard icon badge has accessible contrast (bg-muted + text-muted-foreground)
-- [ ] Empty states show icon + title + description in ExamsTable and ExamResultsView
-- [ ] Error pages on private routes link to role dashboard ("Go to dashboard") not sign-in
-- [ ] Student dashboard DashboardIntro shows Performance link to /student/reports
-- [ ] Forgot-password link present on sign-in page
-- [ ] not-found.tsx at app root renders correctly with StatusPanel
-- [ ] SidebarTrigger and avatar DropdownMenuTrigger have aria-label
-- [ ] Mobile: empty/error state text is readable inside ResponsiveTable scroll area
-- [ ] All stat card values formatted with Intl.NumberFormat
+- [x] Sidebar icons are distinct per role (ShieldCheck for proctor exams, Award for student results, ChartNoAxesCombined for performance, Library for question bank, FileBarChart for staff results, ClipboardCheck for exams)
+- [x] StatCard icon badge has accessible contrast
+- [x] Empty states show icon + title + description in ExamsTable and ExamResultsView
+- [x] Error pages on private routes link to role dashboard ("Go to dashboard") not sign-in
+- [x] Student dashboard DashboardIntro shows Performance link to /student/reports
+- [x] Forgot-password link present on sign-in page
+- [x] not-found.tsx at app root renders correctly with StatusPanel
+- [x] SidebarTrigger and avatar DropdownMenuTrigger have aria-label
+- [x] Mobile: empty/error state text is readable inside ResponsiveTable scroll area
+- [x] All stat card values formatted with Intl.NumberFormat
+
+### Visual polish
+
+- [x] Soft paper + forest green brand preserved (no purple redesign)
+- [x] Glass topbar + rounded-2xl dashboard surfaces
+- [x] Stat card staggered enter (respects reduced motion)
+- [x] RouteReveal soft fade/rise
+- [x] Empty/status panels use dashed empty-state surface
+- [ ] Light + dark mobile spot-check after deploy
 
 | Date | URL host | Result | Notes |
 | --- | --- | --- | --- |
-| Nov 27 2026 | comsats-webathone.vercel.app | — | UI audit checklist added |
+| Nov 27 2026 | comsats-webathone.vercel.app | PASS | Admin login + role isolation verified; polish pending redeploy |
 
 ## Judge demo script (~12 minutes)
 

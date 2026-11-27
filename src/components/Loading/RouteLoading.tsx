@@ -29,12 +29,12 @@ const RouteLoading = ({
         className="grid min-h-[70dvh] place-items-center p-4">
         <div className="grid w-full max-w-sm gap-6">
           <LoadingStatus message={message ?? "Loading sign-in…"} />
-          <div className="grid gap-5 rounded-lg border bg-card p-6">
-            <Skeleton className="mx-auto h-6 w-40" />
-            <Skeleton className="h-4 w-56 max-w-full" />
-            <Skeleton className="h-11 w-full" />
-            <Skeleton className="h-11 w-full" />
-            <Skeleton className="h-11 w-full" />
+          <div className="bg-card grid gap-5 rounded-2xl border p-6 shadow-sm">
+            <Skeleton className="mx-auto h-6 w-40 rounded-xl" />
+            <Skeleton className="h-4 w-56 max-w-full rounded-lg" />
+            <Skeleton className="h-11 w-full rounded-xl" />
+            <Skeleton className="h-11 w-full rounded-xl" />
+            <Skeleton className="h-11 w-full rounded-xl" />
           </div>
         </div>
       </section>
@@ -55,11 +55,11 @@ const RouteLoading = ({
         <Skeleton className="h-8 w-52 max-w-full" />
         <Skeleton className="h-4 w-72 max-w-full" />
       </div>
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="dashboard-stats grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {Array.from({ length: 4 }, (_, index) => (
           <Skeleton
             key={index}
-            className="h-28"
+            className="h-28 rounded-2xl"
           />
         ))}
       </div>
@@ -67,12 +67,12 @@ const RouteLoading = ({
         {Array.from({ length: 2 }, (_, index) => (
           <div
             key={index}
-            className="grid gap-4 rounded-lg border bg-card p-5">
-            <Skeleton className="h-5 w-36" />
+            className="bg-card grid gap-4 rounded-2xl border p-5 shadow-sm">
+            <Skeleton className="h-5 w-36 rounded-lg" />
             {Array.from({ length: 3 }, (_, row) => (
               <Skeleton
                 key={row}
-                className="h-10 w-full"
+                className="h-10 w-full rounded-xl"
               />
             ))}
           </div>

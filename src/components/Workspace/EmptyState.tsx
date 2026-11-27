@@ -8,21 +8,27 @@ type EmptyStateProps = {
 };
 
 const EmptyState = ({ icon, title, description, action }: EmptyStateProps) => (
-  <div className="flex flex-col items-center gap-4 py-16 text-center">
-    {icon && (
+  <div className="empty-state flex flex-col items-center gap-4 px-6 py-16 text-center">
+    {icon ?
       <span
         aria-hidden="true"
-        className="grid size-12 place-items-center rounded-xl bg-muted text-muted-foreground [&_svg]:size-6">
+        className="bg-card text-muted-foreground grid size-12 place-items-center rounded-2xl border shadow-sm [&_svg]:size-6">
         {icon}
       </span>
-    )}
-    <div className="grid gap-1.5">
-      <p className="font-medium text-foreground">{title}</p>
-      {description && (
-        <p className="max-w-sm text-sm text-muted-foreground">{description}</p>
-      )}
+    : null}
+    <div className="grid max-w-md gap-1.5">
+      <p className="font-heading text-base font-semibold text-foreground">
+        {title}
+      </p>
+      {description ?
+        <p className="text-sm leading-relaxed text-muted-foreground">
+          {description}
+        </p>
+      : null}
     </div>
-    {action && <div className="flex flex-wrap justify-center gap-2">{action}</div>}
+    {action ?
+      <div className="flex flex-wrap justify-center gap-2">{action}</div>
+    : null}
   </div>
 );
 

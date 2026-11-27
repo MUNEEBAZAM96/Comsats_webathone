@@ -16,7 +16,7 @@ const StatusPanel = ({
 
   return (
     <section className="status-page grid min-h-[55dvh] flex-1 place-items-center px-4 py-10">
-      <div className="status-panel mx-auto grid w-full max-w-lg justify-items-center gap-5 rounded-2xl border bg-card p-6 text-center sm:p-9">
+      <div className="status-panel mx-auto grid w-full max-w-lg justify-items-center gap-5 rounded-3xl border bg-card p-6 text-center sm:p-9">
         <span
           className={
             tone === "error" ?

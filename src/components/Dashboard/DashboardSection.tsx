@@ -32,7 +32,7 @@ const DashboardRow = ({ children }: { children: ReactNode }) => (
 );
 
 const DashboardEmpty = ({ children }: { children: ReactNode }) => (
-  <p className="rounded-lg border border-dashed bg-muted/25 px-4 py-5 text-sm text-muted-foreground">
+  <p className="empty-state text-muted-foreground px-4 py-8 text-center text-sm leading-relaxed">
     {children}
   </p>
 );

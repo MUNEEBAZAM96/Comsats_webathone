@@ -6,6 +6,7 @@ export type NavItem = {
   icon:
     | "LayoutDashboard"
     | "FileText"
+    | "ClipboardCheck"
     | "Users"
     | "BarChart3"
     | "BookOpen"
@@ -81,7 +82,7 @@ export const adminNav: NavGroup[] = [
   {
     label: "Assessments",
     items: [
-      { title: "Exams", url: "/admin/exams", icon: "FileText" },
+      { title: "Exams", url: "/admin/exams", icon: "ClipboardCheck" },
       { title: "Question Bank", url: "/admin/questions", icon: "Library" },
     ],
   },
@@ -100,7 +101,7 @@ export const examinerNav: NavGroup[] = [
   {
     label: "Assessments",
     items: [
-      { title: "My Exams", url: "/examiner/exams", icon: "FileText" },
+      { title: "My Exams", url: "/examiner/exams", icon: "ClipboardCheck" },
       { title: "Question Bank", url: "/examiner/questions", icon: "Library" },
     ],
   },
@@ -137,7 +138,7 @@ export const studentNav: NavGroup[] = [
   {
     label: "Assessments",
     items: [
-      { title: "My Exams", url: "/student/exams", icon: "FileText" },
+      { title: "My Exams", url: "/student/exams", icon: "ClipboardCheck" },
       { title: "Practice", url: "/student/practice", icon: "BookMarked" },
     ],
   },

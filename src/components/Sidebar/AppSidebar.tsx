@@ -10,6 +10,7 @@ import {
   BookMarkedIcon,
   BookOpenIcon,
   ChartNoAxesCombinedIcon,
+  ClipboardCheckIcon,
   FileBarChartIcon,
   FileTextIcon,
   LayoutDashboardIcon,
@@ -39,6 +40,7 @@ import { findMatchingNavItem, type NavGroup, type NavItem } from "./nav-config";
 const iconMap: Record<string, LucideIcon> = {
   LayoutDashboard: LayoutDashboardIcon,
   FileText: FileTextIcon,
+  ClipboardCheck: ClipboardCheckIcon,
   Users: UsersIcon,
   BarChart3: BarChart3Icon,
   BookOpen: BookOpenIcon,
