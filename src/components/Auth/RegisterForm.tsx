@@ -17,7 +17,8 @@ const RegisterForm = () => {
   const {
     handleSubmit,
     control,
-    formState: { isSubmitting, isValid },
+    formState: { errors, isSubmitting },
+    setError,
     reset,
   } = useForm({
     resolver: zodResolver(registerFormSchema),
@@ -35,26 +36,30 @@ const RegisterForm = () => {
     email,
     password,
   }: RegisterFormType) => {
-    const { error } = await authClient.signUp.email({
-      name,
-      email,
-      password,
-    });
+    const response = await authClient.signUp
+      .email({ name, email, password })
+      .catch(() => null);
 
-    if (error) {
-      toast.error(error.message ?? "Something went wrong");
+    if (!response || response.error) {
+      setError("root", {
+        message:
+          response?.error?.message ??
+          "Could not create your account. Please try again.",
+      });
       return;
     }
 
-    toast.success("Account created successfully! Please sign in.");
+    toast.success("Account created. You can now sign in.");
     reset();
     replace("/");
   };
 
   return (
     <form
+      method="post"
+      aria-busy={isSubmitting}
       onSubmit={handleSubmit(registerFormHandler)}
-      className="grid gap-6"
+      className="auth-form grid"
       noValidate>
       {/* Name field */}
       <Controller
@@ -62,7 +67,7 @@ const RegisterForm = () => {
         control={control}
         render={({ field, fieldState }) => (
           <Field data-invalid={fieldState.invalid}>
-            <FieldLabel htmlFor={field.name}>Name</FieldLabel>
+            <FieldLabel htmlFor={field.name}>Full name</FieldLabel>
             <Input
               {...field}
               id={field.name}
@@ -82,7 +87,7 @@ const RegisterForm = () => {
         control={control}
         render={({ field, fieldState }) => (
           <Field data-invalid={fieldState.invalid}>
-            <FieldLabel htmlFor={field.name}>Email</FieldLabel>
+            <FieldLabel htmlFor={field.name}>Email address</FieldLabel>
             <Input
               {...field}
               id={field.name}
@@ -122,7 +127,7 @@ const RegisterForm = () => {
         control={control}
         render={({ field, fieldState }) => (
           <Field data-invalid={fieldState.invalid}>
-            <FieldLabel htmlFor={field.name}>Confirm Password</FieldLabel>
+            <FieldLabel htmlFor={field.name}>Confirm password</FieldLabel>
             <Input
               {...field}
               id={field.name}
@@ -136,17 +141,24 @@ const RegisterForm = () => {
         )}
       />
 
-      {/* Submit button */}
+      {errors.root?.message && (
+        <p
+          role="alert"
+          className="rounded-md bg-error-surface px-3 py-2.5 text-sm text-destructive">
+          {errors.root.message}
+        </p>
+      )}
       <Button
-        className="w-full"
+        className="auth-submit w-full"
+        size="lg"
         type="submit"
-        disabled={isSubmitting || !isValid}>
+        disabled={isSubmitting}>
         {isSubmitting ?
           <>
-            <Loader2Icon className="animate-spin" /> Creating account...
+            <Loader2Icon className="animate-spin" /> Creating account…
           </>
         : <>
-            <UserPlusIcon /> Register
+            <UserPlusIcon aria-hidden="true" /> Create account
           </>
         }
       </Button>

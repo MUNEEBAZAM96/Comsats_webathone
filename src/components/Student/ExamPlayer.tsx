@@ -391,7 +391,7 @@ export const ExamPlayer = ({
             aria-label={`Question ${index + 1}, ${isAnswered ? "answered" : "unanswered"}${isFlagged ? ", marked for review" : ""}`}
             onClick={() => goTo(index)}
             className={cn(
-              "relative grid min-h-11 place-items-center rounded-md border font-mono text-sm transition-colors hover:bg-accent focus-visible:outline-2",
+              "exam-question-number relative grid min-h-11 place-items-center rounded-md border font-mono text-sm transition-[background-color,transform] hover:bg-accent focus-visible:outline-2",
               isAnswered
                 ? "border-primary/45 bg-secondary text-secondary-foreground"
                 : "border-input bg-card",
@@ -557,12 +557,13 @@ export const ExamPlayer = ({
               >
                 Question {currentIndex + 1} of {questions.length}
               </h2>
-              <QuestionCard
-                key={currentQuestion.id}
-                question={currentQuestion}
-                value={answers[currentQuestion.id] ?? ""}
-                onChange={(text) => changeAnswer(currentQuestion.id, text)}
-              />
+              <div className="exam-question-content" key={currentQuestion.id}>
+                <QuestionCard
+                  question={currentQuestion}
+                  value={answers[currentQuestion.id] ?? ""}
+                  onChange={(text) => changeAnswer(currentQuestion.id, text)}
+                />
+              </div>
             </fieldset>
           ) : (
             <p className="rounded-lg border bg-card p-6 text-muted-foreground">
@@ -621,8 +622,8 @@ export const ExamPlayer = ({
         </aside>
       </div>
 
-      <footer className="sticky bottom-0 border-t bg-card">
-        <div className="mx-auto flex w-full max-w-[80rem] flex-wrap items-center justify-between gap-2 px-4 py-3 sm:px-6 lg:px-8">
+      <footer className="sticky bottom-0 z-10 border-t bg-card pb-[env(safe-area-inset-bottom)]">
+        <div className="mx-auto flex w-full max-w-[80rem] flex-wrap items-center justify-between gap-2 px-4 py-3 max-sm:[&>button]:grow sm:px-6 lg:px-8">
           <div className="flex flex-wrap items-center gap-2">
             <Button
               variant="outline"

@@ -14,7 +14,7 @@ const ThemeToggleButton = () => {
       size="icon-lg"
       aria-label="Toggle color theme"
       title="Toggle color theme"
-      className="border-border bg-card text-muted-foreground"
+      className="theme-toggle border-border bg-card text-muted-foreground"
       onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}
     >
       <MoonIcon aria-hidden="true" className="size-[18px] dark:hidden" />

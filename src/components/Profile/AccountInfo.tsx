@@ -23,15 +23,15 @@ const AccountInfo = ({
     </CardHeader>
     <CardContent className="grid gap-4">
       {/* Email */}
-      <div className="grid grid-cols-[100px_1fr] items-center gap-2 text-sm">
+      <div className="grid grid-cols-[minmax(3.5rem,auto)_minmax(0,1fr)] items-center gap-2 text-sm">
         <span className="text-muted-foreground">Email</span>
-        <span>{email ?? "—"}</span>
+        <span className="wrap-anywhere">{email ?? "—"}</span>
       </div>
 
       <Separator />
 
       {/* Role */}
-      <div className="grid grid-cols-[100px_1fr] items-center gap-2 text-sm">
+      <div className="grid grid-cols-[minmax(3.5rem,auto)_minmax(0,1fr)] items-center gap-2 text-sm">
         <span className="text-muted-foreground">Role</span>
         <Badge
           variant="outline"
@@ -43,7 +43,7 @@ const AccountInfo = ({
       <Separator />
 
       {/* Joined */}
-      <div className="grid grid-cols-[100px_1fr] items-center gap-2 text-sm">
+      <div className="grid grid-cols-[minmax(3.5rem,auto)_minmax(0,1fr)] items-center gap-2 text-sm">
         <span className="text-muted-foreground">Joined</span>
         <span>
           {createdAt ? format(new Date(createdAt), "MMM d, yyyy") : "—"}

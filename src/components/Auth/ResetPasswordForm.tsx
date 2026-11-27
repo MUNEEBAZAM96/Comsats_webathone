@@ -53,6 +53,8 @@ const ResetPasswordForm = () => {
 
   return (
     <form
+      method="post"
+      aria-busy={isSubmitting}
       onSubmit={handleSubmit(resetPasswordHandler)}
       className="grid gap-6"
       noValidate>

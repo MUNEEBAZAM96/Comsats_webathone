@@ -3,7 +3,7 @@ const AuthArtwork = () => (
     viewBox="0 0 520 325"
     fill="none"
     aria-hidden="true"
-    className="w-full max-w-[33rem]"
+    className="auth-artwork w-full max-w-[33rem]"
   >
     <g className="text-brand-panel-muted/25" stroke="currentColor">
       <ellipse cx="260" cy="167" rx="223" ry="121" />
@@ -12,7 +12,7 @@ const AuthArtwork = () => (
       <path d="M37 167h446M71 103h378M71 231h378M260 46v242" />
       <path d="M23 167h14m-7-7v14m460-7h14m-7-7v14M260 32v14m-7-7h14m-7 249v14m-7-7h14" />
     </g>
-    <g strokeWidth="1.2">
+    <g strokeWidth="1.2" className="auth-artwork-documents">
       <rect
         x="184"
         y="76"

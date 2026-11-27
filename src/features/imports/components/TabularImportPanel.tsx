@@ -36,7 +36,7 @@ export const TabularImportPanel = ({ mode }: { mode: Mode }) => {
   const onFile = async (file: File | null) => {
     if (!file) return;
     if (file.size > MAX_CLIENT_BYTES) {
-      toast.error("File exceeds 2MB limit");
+      toast.warning("The file exceeds the 2 MB limit");
       return;
     }
     setBusy(true);
@@ -118,11 +118,12 @@ export const TabularImportPanel = ({ mode }: { mode: Mode }) => {
       );
     a.click();
     URL.revokeObjectURL(url);
+    toast.info("Template download started");
   };
 
   return (
-    <div className="border-border grid gap-4 rounded-lg border p-4">
-      <div className="flex flex-wrap gap-2">
+    <div className="grid min-w-0 grid-cols-1 gap-4 rounded-xl border bg-card p-4">
+      <div className="grid min-w-0 gap-2 sm:grid-cols-[auto_minmax(0,1fr)]">
         <Button
           type="button"
           variant="outline"
@@ -132,6 +133,8 @@ export const TabularImportPanel = ({ mode }: { mode: Mode }) => {
         </Button>
         <input
           type="file"
+          aria-label="Choose a CSV or Excel file"
+          className="min-h-11 w-full min-w-0 rounded-lg border border-input bg-background text-sm text-muted-foreground file:mr-2 file:min-h-11 file:cursor-pointer file:border-0 file:bg-secondary file:px-3 file:font-medium file:text-secondary-foreground focus-visible:outline-2"
           accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
           onChange={(e) => void onFile(e.target.files?.[0] ?? null)}
           disabled={busy}

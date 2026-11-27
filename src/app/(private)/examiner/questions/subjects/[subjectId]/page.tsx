@@ -1,3 +1,4 @@
+import { ResponsiveTable } from "@/components/Workspace/ResponsiveTable";
 import type { Metadata } from "next";
 import Link from "next/link";
 import type { Route } from "next";
@@ -52,7 +53,7 @@ const ExaminerSubjectTopicsPage = async ({
             Create a topic to start adding questions.
           </p>
         </div>
-      : <div className="border-border overflow-x-auto rounded-3xl border">
+      : <ResponsiveTable aria-label="Topics">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-border bg-muted/50 border-b">
@@ -98,7 +99,7 @@ const ExaminerSubjectTopicsPage = async ({
               ))}
             </tbody>
           </table>
-        </div>
+        </ResponsiveTable>
       }
     </section>
   );

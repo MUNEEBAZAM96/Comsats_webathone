@@ -9,13 +9,13 @@ export const metadata: Metadata = {
 };
 
 const LoginPage = () => (
-  <section className="grid gap-8">
+  <section className="auth-entry grid">
     <AuthHeading
       title="Welcome back"
       description="Sign in to your ExamGuard workspace."
     />
     <LoginForm />
-    <p className="border-t pt-6 text-center text-sm text-muted-foreground">
+    <p className="border-t pt-3 sm:pt-4 text-center text-sm text-muted-foreground">
       New to ExamGuard?{" "}
       <Link
         href="/register"

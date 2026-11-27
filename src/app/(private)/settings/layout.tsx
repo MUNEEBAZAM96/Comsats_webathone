@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth";
 import { LayoutProps } from "@/lib/types";
 import { headers } from "next/headers";
 import { SidebarLayout } from "@/components/Sidebar/SidebarLayout";
+import { RouteLoading } from "@/components/Loading/RouteLoading";
 import {
   adminNav,
   examinerNav,
@@ -11,7 +12,7 @@ import {
 } from "@/components/Sidebar/nav-config";
 
 const SettingsLayout = ({ children }: LayoutProps) => (
-  <Suspense fallback={null}>
+  <Suspense fallback={<RouteLoading variant="workspace" />}>
     <SettingsGate>{children}</SettingsGate>
   </Suspense>
 );

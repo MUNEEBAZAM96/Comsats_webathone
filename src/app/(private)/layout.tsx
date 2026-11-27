@@ -1,6 +1,7 @@
 import { Suspense } from "react";
 import { auth } from "@/lib/auth";
 import { LayoutProps } from "@/lib/types";
+import { RouteLoading } from "@/components/Loading/RouteLoading";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
@@ -8,7 +9,7 @@ import { redirect } from "next/navigation";
 export const instant = false;
 
 const PrivateLayout = ({ children }: LayoutProps) => (
-  <Suspense fallback={null}>
+  <Suspense fallback={<RouteLoading variant="workspace" />}>
     <AuthGate>{children}</AuthGate>
   </Suspense>
 );
