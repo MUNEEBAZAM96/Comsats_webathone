@@ -14,6 +14,7 @@ type ExamSource = {
   shuffleOptions: boolean;
   resultReveal: string;
   passMarkPercent: number | null;
+  blueprintJson?: string | null;
   createdBy?: { name: string } | null;
   questions: ExamBuilderExam["questions"];
   sections?: ExamBuilderExam["sections"];
@@ -33,6 +34,7 @@ export const mapExamToBuilder = (exam: ExamSource): ExamBuilderExam => ({
   shuffleOptions: exam.shuffleOptions,
   resultReveal: exam.resultReveal,
   passMarkPercent: exam.passMarkPercent,
+  blueprintJson: exam.blueprintJson ?? null,
   createdBy: exam.createdBy,
   questions: exam.questions,
   sections: exam.sections ?? [],

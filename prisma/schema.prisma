@@ -118,6 +118,8 @@ model Exam {
   resultReveal         String    @default("score_and_answers")
   /// Optional pass threshold in percent (0-100) for analytics and badges
   passMarkPercent      Int?
+  /// Optional JSON exam blueprint (difficulty / type / topic targets)
+  blueprintJson        String?
   createdById          String
   createdBy            User      @relation("CreatedExams", fields: [createdById], references: [id])
   createdAt            DateTime  @default(now())
@@ -355,6 +357,19 @@ model Answer {
   requiresManual    Boolean   @default(false)
   gradedById        String?
   gradedAt          DateTime?
+  /// pending | processing | ai_graded | examiner_reviewed | failed | skipped
+  gradingStatus     String    @default("pending")
+  /// automatic | ai_assisted | examiner | pending_manual | unavailable
+  gradingSource     String?
+  aiScore           Float?
+  aiConfidence      Float?
+  /// Validated AI JSON (summary, strengths, improvements, criteria)
+  aiFeedback        String?
+  aiGradedAt        DateTime?
+  aiRetryCount      Int       @default(0)
+  aiErrorMessage    String?
+  /// attemptId:answerId:clientSeq — prevents duplicate AI grades
+  aiIdempotencyKey  String?
   /// Monotonic per (attempt, question), assigned by the client sync queue
   clientSeq         Int       @default(0)
   idempotencyKey    String?
@@ -367,9 +382,11 @@ model Answer {
   audits          GradeAudit[]
 
   @@unique([attemptId, questionId])
+  @@unique([aiIdempotencyKey])
   @@index([attemptId])
   @@index([questionId])
   @@index([attemptQuestionId])
+  @@index([gradingStatus])
   @@map("answer")
 }
 

@@ -23,6 +23,8 @@ type ExamBuilderSummaryProps = {
   startTime?: string | null;
   endTime?: string | null;
   issues: PublishIssue[];
+  readinessPercent?: number;
+  blueprintWarnings?: Array<{ id: string; message: string; step: BuilderStep }>;
   saveState: "idle" | "saving" | "saved" | "error";
   onGoToStep: (step: BuilderStep) => void;
   onGoToQuestion?: (questionId: string) => void;
@@ -46,6 +48,8 @@ const ExamBuilderSummary = ({
   startTime,
   endTime,
   issues,
+  readinessPercent = 0,
+  blueprintWarnings = [],
   saveState,
   onGoToStep,
   onGoToQuestion,
@@ -63,6 +67,9 @@ const ExamBuilderSummary = ({
         <Badge variant={status === "draft" ? "secondary" : "default"}>
           {status}
         </Badge>
+        <p className="text-sm font-medium">
+          Exam readiness: {readinessPercent}%
+        </p>
       </div>
 
       <dl className="grid gap-3 text-sm">
@@ -131,6 +138,26 @@ const ExamBuilderSummary = ({
             </li>
           ))}
         </ul>
+      : null}
+
+      {blueprintWarnings.length > 0 ?
+        <div className="grid gap-2">
+          <p className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
+            Blueprint warnings
+          </p>
+          <ul className="grid gap-2">
+            {blueprintWarnings.slice(0, 6).map((warning) => (
+              <li key={warning.id}>
+                <button
+                  type="button"
+                  className="text-muted-foreground hover:text-foreground w-full rounded-xl text-left text-sm underline-offset-2 hover:underline"
+                  onClick={() => onGoToStep(warning.step)}>
+                  {warning.message}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
       : null}
     </div>
   );

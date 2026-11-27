@@ -49,8 +49,17 @@ Demo accounts (password = email unless admin email overridden):
 
 - [ ] Assigned proctor opens monitor; unassigned denied
 - [ ] Grade long answer if pending
+- [ ] Approve / override AI written grade in grading workspace
 - [ ] Publish results; student sees gated then revealed score
+- [ ] Student `/student/results` + `/student/reports` + `/student/reports/weekly`
 - [ ] Analytics / CSV export if used in demo
+
+## AI grading (optional Groq)
+
+- [ ] `GROQ_API_KEY` set server-side only (never `NEXT_PUBLIC_`)
+- [ ] With key missing / `AI_GRADING_ENABLED=false`: objective grades still work; written stays pending manual
+- [ ] With key set: submit → written answers get provisional AI grade; examiner must review before treating as final
+- [ ] Retry from grading UI does not overwrite examiner overrides
 
 ## Phase 10 extras
 

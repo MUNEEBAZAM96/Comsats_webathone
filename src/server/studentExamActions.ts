@@ -925,6 +925,9 @@ export const getResultDetail = async (attemptId: string) => {
         feedback: true,
         manualScore: true,
         requiresManual: true,
+        gradingSource: true,
+        gradingStatus: true,
+        aiFeedback: true,
       },
     }),
   ]);
@@ -970,14 +973,35 @@ export const getResultDetail = async (attemptId: string) => {
   return {
     ...released,
     questions,
-    answers: answers.map((a) => ({
-      id: a.id,
-      questionId: a.questionId,
-      text: a.text,
-      score: a.score,
-      feedback: a.feedback,
-      manuallyGraded: a.manualScore != null,
-      requiresManual: a.requiresManual,
-    })),
+    answers: answers.map((a) => {
+      let strengths: string[] = [];
+      let improvements: string[] = [];
+      if (a.aiFeedback) {
+        try {
+          const parsed = JSON.parse(a.aiFeedback) as {
+            strengths?: string[];
+            improvements?: string[];
+            summary?: string;
+          };
+          strengths = parsed.strengths ?? [];
+          improvements = parsed.improvements ?? [];
+        } catch {
+          /* ignore malformed stored feedback */
+        }
+      }
+      return {
+        id: a.id,
+        questionId: a.questionId,
+        text: a.text,
+        score: a.score,
+        feedback: a.feedback,
+        manuallyGraded: a.manualScore != null,
+        requiresManual: a.requiresManual,
+        gradingSource: a.gradingSource,
+        gradingStatus: a.gradingStatus,
+        strengths,
+        improvements,
+      };
+    }),
   };
 };

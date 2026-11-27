@@ -8,8 +8,10 @@ import { formatScore } from "@/lib/exam/grading";
 import { cn } from "@/lib/utils";
 import { SCORE_STEP, manualGradeSchema, type ManualGradeFormType } from "@/lib/zodSchema";
 import {
+  approveAiGrade,
   loadGradingQueue,
   overrideAutoScore,
+  retryAiGrading,
   saveManualGrade,
   type GradingQueue,
   type GradingQueueItem,
@@ -20,12 +22,211 @@ import {
   ChevronRightIcon,
   Loader2Icon,
   LockIcon,
+  RefreshCwIcon,
   SaveIcon,
+  SparklesIcon,
   Undo2Icon,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Controller, useForm } from "react-hook-form";
 import { toast } from "sonner";
+
+type AiFeedbackPayload = {
+  summary?: string;
+  strengths?: string[];
+  improvements?: string[];
+  criterionFeedback?: Array<{
+    criterion: string;
+    score: number;
+    maxScore: number;
+    feedback: string;
+  }>;
+  needsReview?: boolean;
+  decision?: string;
+};
+
+const parseAiFeedback = (raw: string | null | undefined): AiFeedbackPayload | null => {
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw) as AiFeedbackPayload;
+  } catch {
+    return { summary: raw };
+  }
+};
+
+const AiAssistPanel = ({
+  item,
+  locked,
+  onApproved,
+  onRetried,
+}: {
+  item: GradingQueueItem;
+  locked: boolean;
+  onApproved: (update: Partial<GradingQueueItem>) => void;
+  onRetried: () => void;
+}) => {
+  const [busy, setBusy] = useState(false);
+  const ai = parseAiFeedback(item.aiFeedback);
+  if (item.kind !== "manual" && item.kind !== "blank") return null;
+  if (
+    !item.aiScore &&
+    !item.aiFeedback &&
+    item.gradingStatus !== "failed" &&
+    item.gradingSource !== "unavailable" &&
+    item.gradingStatus !== "processing"
+  ) {
+    return (
+      <div className="border-border bg-muted/20 grid gap-2 rounded-2xl border p-3 text-sm">
+        <p className="flex items-center gap-2 font-medium">
+          <SparklesIcon className="size-4" /> AI-assisted grading
+        </p>
+        <p className="text-muted-foreground text-xs">
+          {item.gradingSource === "pending_manual" ||
+          item.gradingSource === "unavailable" ?
+            "AI unavailable — mark this answer manually."
+          : "Waiting for AI provisional score (or mark manually)."}
+        </p>
+        {!locked && (
+          <Button
+            type="button"
+            variant="outline"
+            size="lg"
+            disabled={busy}
+            onClick={() => {
+              setBusy(true);
+              void retryAiGrading(item.answerId)
+                .then((res) => {
+                  if (!res.ok) return toast.error(res.error);
+                  toast.success("AI retry finished");
+                  onRetried();
+                })
+                .finally(() => setBusy(false));
+            }}>
+            {busy ?
+              <Loader2Icon className="size-4 animate-spin" />
+            : <RefreshCwIcon className="size-4" />}
+            Retry AI grading
+          </Button>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="border-border bg-muted/20 grid gap-3 rounded-2xl border p-3 text-sm">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="flex items-center gap-2 font-medium">
+          <SparklesIcon className="size-4" />
+          {item.gradingStatus === "examiner_reviewed" ?
+            "Examiner reviewed"
+          : item.gradingStatus === "failed" ?
+            "AI failed"
+          : item.gradingStatus === "ai_graded" ?
+            "AI-assisted"
+          : "Needs review"}
+        </p>
+        <span className="text-muted-foreground text-xs">
+          {item.aiScore != null ?
+            `AI ${formatScore(item.aiScore)}/${item.points}`
+          : null}
+          {item.aiConfidence != null ?
+            ` · confidence ${Math.round(item.aiConfidence * 100)}%`
+          : null}
+        </span>
+      </div>
+      {item.aiErrorMessage ?
+        <p className="text-destructive text-xs">{item.aiErrorMessage}</p>
+      : null}
+      {ai?.summary ?
+        <p className="whitespace-pre-wrap">{ai.summary}</p>
+      : null}
+      {ai?.strengths && ai.strengths.length > 0 ?
+        <div>
+          <p className="text-muted-foreground text-xs">Strengths</p>
+          <ul className="list-disc pl-5">
+            {ai.strengths.map((s) => (
+              <li key={s}>{s}</li>
+            ))}
+          </ul>
+        </div>
+      : null}
+      {ai?.improvements && ai.improvements.length > 0 ?
+        <div>
+          <p className="text-muted-foreground text-xs">Improvements</p>
+          <ul className="list-disc pl-5">
+            {ai.improvements.map((s) => (
+              <li key={s}>{s}</li>
+            ))}
+          </ul>
+        </div>
+      : null}
+      {ai?.criterionFeedback && ai.criterionFeedback.length > 0 ?
+        <ul className="grid gap-1">
+          {ai.criterionFeedback.map((c) => (
+            <li
+              key={c.criterion}
+              className="text-xs">
+              <span className="font-medium">{c.criterion}</span>: {c.score}/
+              {c.maxScore} — {c.feedback}
+            </li>
+          ))}
+        </ul>
+      : null}
+      {!locked && item.state === "pending" ?
+        <div className="flex flex-wrap gap-2">
+          {item.aiScore != null ?
+            <Button
+              type="button"
+              size="lg"
+              disabled={busy}
+              onClick={() => {
+                setBusy(true);
+                void approveAiGrade(item.answerId)
+                  .then((res) => {
+                    if (!res.ok) return toast.error(res.error);
+                    toast.success("AI grade approved");
+                    onApproved({
+                      manualScore: res.data.manualScore,
+                      score: res.data.score,
+                      feedback: res.data.feedback,
+                      gradedAt: res.data.gradedAt,
+                      gradedBy: res.data.gradedBy,
+                      state: "graded",
+                      gradingStatus: "examiner_reviewed",
+                      gradingSource: "examiner",
+                      attemptStatus: res.data.attempt.status,
+                    });
+                  })
+                  .finally(() => setBusy(false));
+              }}>
+              {busy ?
+                <Loader2Icon className="size-4 animate-spin" />
+              : <SparklesIcon className="size-4" />}
+              Approve AI grade
+            </Button>
+          : null}
+          <Button
+            type="button"
+            variant="outline"
+            size="lg"
+            disabled={busy}
+            onClick={() => {
+              setBusy(true);
+              void retryAiGrading(item.answerId)
+                .then((res) => {
+                  if (!res.ok) return toast.error(res.error);
+                  toast.success("AI retry finished");
+                  onRetried();
+                })
+                .finally(() => setBusy(false));
+            }}>
+            <RefreshCwIcon className="size-4" /> Retry AI
+          </Button>
+        </div>
+      : null}
+    </div>
+  );
+};
 
 type StatusFilter = "pending" | "graded" | "all";
 type GroupBy = "question" | "candidate";
@@ -58,7 +259,10 @@ const MarkForm = ({
     resolver: zodResolver(manualGradeSchema),
     defaultValues: {
       answerId: item.answerId,
-      score: item.manualScore ?? (item.blank ? 0 : ""),
+      score:
+        item.manualScore ??
+        item.aiScore ??
+        (item.blank ? 0 : ""),
       feedback: item.feedback ?? "",
     },
     mode: "all",
@@ -525,6 +729,20 @@ export const GradingWorkspace = ({ initial }: { initial: GradingQueue }) => {
                   {current.detail.wrongSelected} wrong selected, {current.detail.missed} missed ·
                   automatic score {formatScore(current.autoScore)}
                 </p>
+              )}
+
+              {(current.kind === "manual" || current.kind === "blank") && (
+                <AiAssistPanel
+                  key={`ai-${current.answerId}-${current.aiGradedAt ?? ""}`}
+                  item={current}
+                  locked={locked}
+                  onApproved={(u) => applyUpdate(current.answerId, u, false)}
+                  onRetried={() => {
+                    void loadGradingQueue(examId, { anonymize }).then((res) => {
+                      if (res.ok) setItems(res.data.items);
+                    });
+                  }}
+                />
               )}
 
               {current.kind === "override" ?

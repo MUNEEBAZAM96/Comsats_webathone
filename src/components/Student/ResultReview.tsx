@@ -23,6 +23,10 @@ type Answer = {
   manuallyGraded?: boolean;
   requiresManual?: boolean;
   gradedBy?: string | null;
+  gradingSource?: string | null;
+  gradingStatus?: string | null;
+  strengths?: string[];
+  improvements?: string[];
 };
 
 type Question = {
@@ -132,9 +136,27 @@ export const ResultReview = ({
     pct != null && passMarkPercent != null ? pct >= passMarkPercent : null;
   const staff = audience === "staff";
 
+  let objectiveScore = 0;
+  let objectiveMax = 0;
+  let writtenScore = 0;
+  let writtenMax = 0;
+  for (const q of questions) {
+    const answer = answerMap.get(q.id);
+    const score = answer?.score ?? 0;
+    if (q.manual) {
+      writtenScore += score;
+      writtenMax += q.points;
+    } else {
+      objectiveScore += score;
+      objectiveMax += q.points;
+    }
+  }
+  const objectivePct = scorePercent(objectiveScore, objectiveMax);
+  const writtenPct = scorePercent(writtenScore, writtenMax);
+
   return (
     <div className="grid min-w-0 gap-6">
-      <div className="grid gap-4 rounded-lg border p-6 sm:grid-cols-3">
+      <div className="border-border grid gap-4 rounded-3xl border p-6 sm:grid-cols-3">
         <div className="text-center">
           <p
             className="text-3xl font-bold tabular-nums"
@@ -171,6 +193,42 @@ export const ResultReview = ({
           <p className="text-muted-foreground text-sm">Answered</p>
         </div>
       </div>
+
+      {(objectiveMax > 0 || writtenMax > 0) && (
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="border-border rounded-3xl border p-4">
+            <p className="text-muted-foreground text-xs uppercase">Objective</p>
+            <p className="mt-1 text-xl font-medium tabular-nums">
+              {formatScore(objectiveScore)}/{objectiveMax}
+              {objectivePct != null ? ` · ${objectivePct}%` : ""}
+            </p>
+            <div
+              className="bg-muted mt-3 h-2 overflow-hidden rounded-full"
+              aria-hidden="true">
+              <div
+                className="bg-primary h-full rounded-full"
+                style={{ width: `${objectivePct ?? 0}%` }}
+              />
+            </div>
+          </div>
+          <div className="border-border rounded-3xl border p-4">
+            <p className="text-muted-foreground text-xs uppercase">Written</p>
+            <p className="mt-1 text-xl font-medium tabular-nums">
+              {writtenMax === 0 ?
+                "—"
+              : `${formatScore(writtenScore)}/${writtenMax}${writtenPct != null ? ` · ${writtenPct}%` : ""}`}
+            </p>
+            <div
+              className="bg-muted mt-3 h-2 overflow-hidden rounded-full"
+              aria-hidden="true">
+              <div
+                className="bg-chart-2 h-full rounded-full"
+                style={{ width: `${writtenPct ?? 0}%` }}
+              />
+            </div>
+          </div>
+        </div>
+      )}
 
       {(submittedAt || pendingCount > 0) && (
         <p className="text-muted-foreground text-sm">
@@ -311,7 +369,11 @@ export const ResultReview = ({
                       aria-hidden="true"
                       className="size-4"
                     />
-                    Awaiting manual marking
+                    {answer?.gradingStatus === "processing" ?
+                      "AI grading in progress — awaiting examiner review"
+                    : answer?.gradingSource === "unavailable" ?
+                      "AI unavailable — awaiting examiner review"
+                    : "Awaiting examiner review"}
                   </p>
                 )}
 
@@ -325,9 +387,50 @@ export const ResultReview = ({
                       staff ?
                         `Automatic score ${formatScore(answer.autoScore)} overridden${answer.gradedBy ? ` by ${answer.gradedBy}` : ""}`
                       : "Score adjusted by an examiner"
+                    : answer.gradingSource === "examiner" ?
+                      "Examiner reviewed"
+                    : answer.gradingSource === "ai_assisted" ?
+                      "AI-assisted (examiner confirmed)"
                     : `Marked by ${staff && answer.gradedBy ? answer.gradedBy : "an examiner"}`}
                   </p>
                 )}
+
+                {!pending &&
+                  !answer?.manuallyGraded &&
+                  answer?.gradingSource === "ai_assisted" && (
+                    <p className="text-muted-foreground text-xs">
+                      AI-assisted provisional feedback
+                    </p>
+                  )}
+
+                {(answer?.strengths?.length || answer?.improvements?.length) ?
+                  <div className="bg-background/60 grid gap-2 rounded-md border px-3 py-2 text-sm">
+                    {answer.strengths && answer.strengths.length > 0 ?
+                      <div>
+                        <p className="text-muted-foreground text-xs font-medium">
+                          Strengths
+                        </p>
+                        <ul className="list-disc pl-5">
+                          {answer.strengths.map((s) => (
+                            <li key={s}>{s}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    : null}
+                    {answer.improvements && answer.improvements.length > 0 ?
+                      <div>
+                        <p className="text-muted-foreground text-xs font-medium">
+                          Areas for improvement
+                        </p>
+                        <ul className="list-disc pl-5">
+                          {answer.improvements.map((s) => (
+                            <li key={s}>{s}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    : null}
+                  </div>
+                : null}
 
                 {answer?.feedback && (
                   <div className="bg-background/60 grid gap-1 rounded-md border px-3 py-2 text-sm">
@@ -336,7 +439,9 @@ export const ResultReview = ({
                         aria-hidden="true"
                         className="size-3.5"
                       />
-                      Examiner feedback
+                      {answer.manuallyGraded ?
+                        "Examiner feedback"
+                      : "Published feedback"}
                     </span>
                     <p className="break-words whitespace-pre-wrap">
                       {answer.feedback}

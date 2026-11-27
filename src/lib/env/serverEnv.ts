@@ -24,6 +24,18 @@ export const serverEnv = createEnv({
     CLOUDINARY_API_KEY: z.string().min(1).optional(),
     CLOUDINARY_API_SECRET: z.string().min(1).optional(),
     CLOUDINARY_FOLDER_MODE: z.string().min(1).optional(),
+    /** Server-only Groq key for AI-assisted written grading. Never NEXT_PUBLIC_. */
+    GROQ_API_KEY: z.string().min(1).optional(),
+    GROQ_MODEL: z.string().min(1).optional(),
+    AI_GRADING_ENABLED: z.enum(["true", "false"]).optional(),
+    AI_GRADING_MAX_RETRIES: z.coerce.number().int().min(0).max(5).optional(),
+    AI_GRADING_TIMEOUT_MS: z.coerce
+      .number()
+      .int()
+      .min(1000)
+      .max(60000)
+      .optional(),
+    AI_GRADING_REVIEW_THRESHOLD: z.coerce.number().min(0).max(1).optional(),
   },
   experimental__runtimeEnv: process.env,
 });

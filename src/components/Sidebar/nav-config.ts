@@ -51,6 +51,10 @@ export const getPageTitle = (pathname: string, groups: NavGroup[]) => {
   }
 
   if (section === "results" && id) return "Result Details";
+  if (section === "reports") {
+    if (id === "weekly") return "Weekly Report";
+    return "Performance";
+  }
 
   return (
     findMatchingNavItem(
@@ -121,6 +125,7 @@ export const studentNav: NavGroup[] = [
     label: "Reports",
     items: [
       { title: "My Results", url: "/student/results", icon: "BarChart3" },
+      { title: "Performance", url: "/student/reports", icon: "BarChart3" },
     ],
   },
 ];

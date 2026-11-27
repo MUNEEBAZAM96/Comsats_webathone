@@ -19,9 +19,15 @@ import { toast } from "sonner";
 import ExamForm from "@/components/Exam/ExamForm";
 import { Badge } from "@/components/shadcnui/badge";
 import { Button } from "@/components/shadcnui/button";
+import {
+  evaluateBlueprint,
+  parseExamBlueprint,
+  readinessPercent as softReadinessPercent,
+} from "@/lib/exam/blueprint";
 import { evaluatePublishReadiness } from "@/lib/exam/publishReadiness";
 import type { ExamFormType } from "@/lib/zodSchema";
 import { publishExam, updateExam } from "@/server/examActions";
+import { saveExamBlueprint } from "@/server/blueprintActions";
 import ExamBuilderSummary from "./ExamBuilderSummary";
 import QuestionSetPanel from "./QuestionSetPanel";
 import {
@@ -45,6 +51,7 @@ export type ExamBuilderExam = {
   shuffleOptions: boolean;
   resultReveal: string;
   passMarkPercent: number | null;
+  blueprintJson?: string | null;
   createdBy?: { name: string } | null;
   questions: BuilderQuestion[];
   sections?: BuilderSection[];
@@ -99,6 +106,16 @@ const ExamBuilder = ({ exam, basePath }: ExamBuilderProps) => {
         questions: exam.questions,
       }),
     [exam],
+  );
+
+  const blueprintWarnings = useMemo(() => {
+    const blueprint = parseExamBlueprint(exam.blueprintJson);
+    return evaluateBlueprint(blueprint, exam.questions);
+  }, [exam.blueprintJson, exam.questions]);
+
+  const readinessPct = softReadinessPercent(
+    readiness.issues.length,
+    blueprintWarnings.length,
   );
 
   const refresh = () => router.refresh();
@@ -320,7 +337,9 @@ const ExamBuilder = ({ exam, basePath }: ExamBuilderProps) => {
               </div>
 
               <div className="grid gap-2">
-                <h3 className="font-medium">Publish checklist</h3>
+                <h3 className="font-medium">
+                  Publish checklist · {readinessPct}% ready
+                </h3>
                 {readiness.ready ?
                   <p className="text-success flex items-center gap-2 text-sm">
                     <CheckCircle2Icon className="size-4" />
@@ -355,6 +374,78 @@ const ExamBuilder = ({ exam, basePath }: ExamBuilderProps) => {
                   </ul>
                 }
               </div>
+
+              {!readOnly ?
+                <div className="border-border grid gap-3 rounded-3xl border p-4">
+                  <div className="grid gap-1">
+                    <h3 className="font-medium">Optional paper blueprint</h3>
+                    <p className="text-muted-foreground text-sm">
+                      Warnings only — does not block publish. Default target:
+                      40% easy / 40% medium / 20% hard and mixed question types.
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="lg"
+                      onClick={() => {
+                        void saveExamBlueprint(exam.id, {
+                          difficulty: { easy: 40, medium: 40, hard: 20 },
+                          types: {
+                            single_choice: 60,
+                            multiple_choice: 20,
+                            short_answer: 10,
+                            long_answer: 10,
+                          },
+                        })
+                          .then(() => {
+                            toast.success("Blueprint saved");
+                            refresh();
+                          })
+                          .catch((e) =>
+                            toast.error(
+                              e instanceof Error ?
+                                e.message
+                              : "Failed to save blueprint",
+                            ),
+                          );
+                      }}>
+                      Apply default blueprint
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="lg"
+                      onClick={() => {
+                        void saveExamBlueprint(exam.id, null)
+                          .then(() => {
+                            toast.success("Blueprint cleared");
+                            refresh();
+                          })
+                          .catch((e) =>
+                            toast.error(
+                              e instanceof Error ?
+                                e.message
+                              : "Failed to clear blueprint",
+                            ),
+                          );
+                      }}>
+                      Clear blueprint
+                    </Button>
+                  </div>
+                  {blueprintWarnings.length > 0 ?
+                    <ul className="text-muted-foreground grid gap-1 text-sm">
+                      {blueprintWarnings.map((w) => (
+                        <li key={w.id}>{w.message}</li>
+                      ))}
+                    </ul>
+                  : <p className="text-muted-foreground text-sm">
+                      No blueprint warnings.
+                    </p>
+                  }
+                </div>
+              : null}
 
               <div className="grid gap-3">
                 <h3 className="font-medium">Paper preview</h3>
@@ -409,6 +500,8 @@ const ExamBuilder = ({ exam, basePath }: ExamBuilderProps) => {
           startTime={toLocalInput(exam.startTime)}
           endTime={toLocalInput(exam.endTime)}
           issues={readiness.issues}
+          readinessPercent={readinessPct}
+          blueprintWarnings={blueprintWarnings}
           saveState={saveState}
           onGoToStep={setStep}
           onGoToQuestion={(questionId) => {

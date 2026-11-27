@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import type { Route } from "next";
 import Link from "next/link";
 import { format } from "date-fns";
 import { ClockIcon, EyeOffIcon } from "lucide-react";
@@ -6,18 +7,21 @@ import { requireRole } from "@/server/session";
 import { getResultDetail } from "@/server/studentExamActions";
 import { FinishedAttemptCleanup } from "@/features/exam-workspace/components/FinishedAttemptCleanup";
 import { ReportPdfControls } from "@/features/reports/components/PublishResultReportButton";
-import { ResultReview } from "@/components/Student/ResultReview";
+import { StudentResultTabs } from "@/components/Student/StudentResultTabs";
 import {
   Card,
   CardDescription,
   CardHeader,
   CardTitle,
 } from "@/components/shadcnui/card";
+import { Button } from "@/components/shadcnui/button";
 
 export const metadata: Metadata = {
   title: "Result Details",
   description: "View result details",
 };
+
+export const instant = false;
 
 const StudentResultDetailPage = async ({
   params,
@@ -34,13 +38,21 @@ const StudentResultDetailPage = async ({
   return (
     <section className="mx-auto grid w-full max-w-3xl gap-6">
       <FinishedAttemptCleanup attemptId={id} />
-      <div className="grid gap-1">
-        <h1 className="text-2xl font-medium">{data.examTitle} — Results</h1>
-        <Link
-          href="/student/results"
-          className="text-primary text-sm hover:underline"
-        >
-          ← Back to My Results
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="grid gap-1">
+          <h1 className="text-2xl font-medium">{data.examTitle} — Results</h1>
+          <Link
+            href={"/student/results" as Route}
+            className="text-primary text-sm hover:underline">
+            ← Back to My Results
+          </Link>
+        </div>
+        <Link href={"/student/reports/weekly" as Route}>
+          <Button
+            variant="outline"
+            size="lg">
+            Weekly report
+          </Button>
         </Link>
       </div>
 
@@ -48,16 +60,19 @@ const StudentResultDetailPage = async ({
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <ClockIcon aria-hidden="true" className="text-info size-5" />
-              {data.status === "submitted"
-                ? "Being graded"
-                : "Submitted — awaiting results"}
+              <ClockIcon
+                aria-hidden="true"
+                className="text-info size-5"
+              />
+              {data.status === "submitted" ?
+                "Being graded"
+              : "Submitted — awaiting results"}
             </CardTitle>
             <CardDescription>
               {submitted} Your answers were received.{" "}
-              {data.status === "submitted"
-                ? "Some answers are being marked by an examiner. "
-                : ""}
+              {data.status === "submitted" ?
+                "Some answers may still be awaiting examiner review (including AI-assisted written marks). "
+              : ""}
               Scores and feedback appear here once the examiner publishes
               results.
             </CardDescription>
@@ -84,19 +99,24 @@ const StudentResultDetailPage = async ({
       )}
 
       {data.visibility === "released" && (
-        <ReportPdfControls kind="own" attemptId={id} />
-      )}
-      {data.visibility === "released" && (
-        <ResultReview
-          totalScore={data.totalScore}
-          maxScore={data.maxScore}
-          submittedAt={data.submittedAt?.toISOString() ?? null}
-          questions={data.questions}
-          answers={data.answers}
-          showAnswers={data.showAnswers}
-          passMarkPercent={data.passMarkPercent}
-          summary={data.summary}
-        />
+        <>
+          <ReportPdfControls
+            kind="own"
+            attemptId={id}
+          />
+          <StudentResultTabs
+            data={{
+              totalScore: data.totalScore,
+              maxScore: data.maxScore,
+              submittedAt: data.submittedAt?.toISOString() ?? null,
+              questions: data.questions,
+              answers: data.answers,
+              showAnswers: data.showAnswers,
+              passMarkPercent: data.passMarkPercent,
+              summary: data.summary,
+            }}
+          />
+        </>
       )}
     </section>
   );

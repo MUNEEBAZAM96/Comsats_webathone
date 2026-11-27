@@ -41,7 +41,12 @@ const toDate = (value: Date | string | null | undefined): Date | null => {
 
 export const evaluatePublishReadiness = (
   exam: PublishExamInput,
-): { ready: boolean; issues: PublishIssue[]; totalMarks: number } => {
+): {
+  ready: boolean;
+  issues: PublishIssue[];
+  totalMarks: number;
+  readinessPercent: number;
+} => {
   const issues: PublishIssue[] = [];
 
   if (!exam.title?.trim()) {
@@ -204,5 +209,10 @@ export const evaluatePublishReadiness = (
     }
   }
 
-  return { ready: issues.length === 0, issues, totalMarks };
+  const ready = issues.length === 0;
+  const readinessPercent = Math.max(
+    0,
+    Math.min(100, 100 - issues.length * 8),
+  );
+  return { ready, issues, totalMarks, readinessPercent };
 };

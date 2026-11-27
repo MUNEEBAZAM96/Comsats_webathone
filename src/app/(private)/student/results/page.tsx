@@ -5,6 +5,8 @@ import { format } from "date-fns";
 import { EyeIcon } from "lucide-react";
 import { requireRole } from "@/server/session";
 import { getStudentResults } from "@/server/studentExamActions";
+import { getStudentPerformanceDashboard } from "@/server/studentAnalytics";
+import { PerformanceSummary } from "@/components/Student/PerformanceSummary";
 import {
   Card,
   CardContent,
@@ -20,6 +22,8 @@ export const metadata: Metadata = {
   title: "My Results",
   description: "View your exam results and scores",
 };
+
+export const instant = false;
 
 const ResultState = ({
   published,
@@ -44,22 +48,52 @@ const ResultState = ({
 
 const StudentResultsPage = async () => {
   await requireRole("student");
-  const results = await getStudentResults();
+  const [results, dashboard] = await Promise.all([
+    getStudentResults(),
+    getStudentPerformanceDashboard(),
+  ]);
 
   return (
-    <section className="grid gap-6">
-      <h1 className="text-2xl font-medium">My Results</h1>
-      {results.length === 0 ?
-        <Card>
-          <CardHeader>
-            <CardTitle>No results yet</CardTitle>
-            <CardDescription>
-              Complete an exam to see your results here.
-            </CardDescription>
-          </CardHeader>
-        </Card>
-      : <div className="grid gap-4">
-          {results.map((r) => {
+    <section className="grid gap-8">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="grid gap-1">
+          <h1 className="text-2xl font-medium">My Results</h1>
+          <p className="text-muted-foreground text-sm">
+            Scores appear after examiners publish results for each exam.
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Link href={"/student/reports" as Route}>
+            <Button
+              variant="outline"
+              size="lg">
+              Performance overview
+            </Button>
+          </Link>
+          <Link href={"/student/reports/weekly" as Route}>
+            <Button
+              variant="outline"
+              size="lg">
+              Weekly report
+            </Button>
+          </Link>
+        </div>
+      </div>
+
+      <PerformanceSummary data={dashboard} />
+
+      <div className="grid gap-4">
+        <h2 className="text-lg font-medium">All attempts</h2>
+        {results.length === 0 ?
+          <Card>
+            <CardHeader>
+              <CardTitle>No results yet</CardTitle>
+              <CardDescription>
+                Complete an exam to see your results here.
+              </CardDescription>
+            </CardHeader>
+          </Card>
+        : results.map((r) => {
             const pct =
               r.resultsVisible ? scorePercent(r.totalScore, r.maxScore) : null;
             return (
@@ -109,9 +143,9 @@ const StudentResultsPage = async () => {
                 </CardContent>
               </Card>
             );
-          })}
-        </div>
-      }
+          })
+        }
+      </div>
     </section>
   );
 };

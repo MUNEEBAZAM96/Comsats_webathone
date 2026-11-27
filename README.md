@@ -310,10 +310,21 @@ Admin and examiners author papers in a multi-step builder:
 - Routes: `/admin|examiner/exams/[id]/builder` (and the exam detail page), plus `/preview` for a candidate-safe view (no answer keys, no attempt).
 - Steps: details → question set → settings → review & publish.
 - Question set: import from bank (filters + random), add manually, upload CSV/JSON with row-level validation and preview, sections (`ExamSection`), reorder with accessible move controls, undo remove.
+- Optional blueprint + readiness % (warnings do not block publish).
 - Settings expose only engine-backed options (schedule, shuffle, pass mark %, result reveal). Auto-submit and scratchpad remain in the student workspace.
 - Publish uses `evaluatePublishReadiness` + existing `publishExam` ownership/lifecycle checks.
-- Migration: `20261127180000_exam_sections_paper_setting`.
-- Unit checks: `npx tsx scripts/test-paper-setting.ts`.
+- Migrations: `20261127180000_exam_sections_paper_setting`, `20261127190000_ai_grading_and_blueprint`.
+- Unit checks: `npx tsx scripts/test-paper-setting.ts`, `npx tsx scripts/test-ai-grading.ts`.
+
+### AI-assisted written grading
+
+After submit, objective items use existing auto-grading. Written answers get a bounded Groq provisional grade (server-only `GROQ_API_KEY`). Examiners approve/edit/override in the grading workspace; AI never overwrites an examiner mark. If Groq is missing or disabled (`AI_GRADING_ENABLED=false`), answers stay pending manual review. Set the Groq vars in Vercel Production (never `NEXT_PUBLIC_`).
+
+Env (server only): `GROQ_API_KEY`, `GROQ_MODEL`, `AI_GRADING_ENABLED`, `AI_GRADING_MAX_RETRIES`, `AI_GRADING_TIMEOUT_MS`, `AI_GRADING_REVIEW_THRESHOLD`.
+
+### Student results & weekly analytics
+
+Published attempts only: `/student/results`, `/student/results/[id]` (overview / answer review / feedback), `/student/reports`, `/student/reports/weekly`. Topic and question-type aggregates, weekly trend chart, and written feedback (never unpublished scores or answer keys before `resultReveal` allows). Checks: `npx tsx scripts/test-student-analytics.ts`.
 
 ### Phase 10 — Secondary Features
 

@@ -261,14 +261,27 @@ export const finalizeAttemptIdempotent = async (
 ) => {
   try {
     const result = await finalizeAttempt(attemptId, source);
+    // Bounded AI pass for written answers — never blocks objective grading.
+    if (result.pending > 0) {
+      const { kickoffWrittenAiGrading } = await import(
+        "@/server/ai/processWrittenAiGrading"
+      );
+      await kickoffWrittenAiGrading(attemptId);
+    }
     return { status: result.status, alreadySubmitted: false };
   } catch (e) {
     const current = await prisma.examAttempt.findUnique({
       where: { id: attemptId },
       select: { status: true },
     });
-    if (current && current.status !== "in_progress")
+    if (current && current.status !== "in_progress") {
+      // Still try AI for already-submitted attempts missing AI grades.
+      const { kickoffWrittenAiGrading } = await import(
+        "@/server/ai/processWrittenAiGrading"
+      );
+      await kickoffWrittenAiGrading(attemptId).catch(() => undefined);
       return { status: current.status, alreadySubmitted: true };
+    }
     throw e;
   }
 };

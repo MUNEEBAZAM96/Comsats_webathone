@@ -300,6 +300,13 @@ export const getGradingQueue = async (
             feedback: true,
             gradedAt: true,
             gradedBy: { select: { name: true } },
+            gradingStatus: true,
+            gradingSource: true,
+            aiScore: true,
+            aiConfidence: true,
+            aiFeedback: true,
+            aiGradedAt: true,
+            aiErrorMessage: true,
             attemptQuestion: {
               select: {
                 sourceQuestionId: true,
@@ -387,6 +394,13 @@ export const getGradingQueue = async (
           feedback: a.feedback,
           gradedAt: a.gradedAt,
           gradedBy: a.gradedBy?.name ?? null,
+          gradingStatus: a.gradingStatus,
+          gradingSource: a.gradingSource,
+          aiScore: a.aiScore,
+          aiConfidence: a.aiConfidence,
+          aiFeedback: a.aiFeedback,
+          aiGradedAt: a.aiGradedAt,
+          aiErrorMessage: a.aiErrorMessage,
           detail,
         },
       ];
@@ -441,6 +455,10 @@ const loadAnswerForMarking = async (answerId: string, session: StaffSession) => 
       id: true,
       attemptId: true,
       requiresManual: true,
+      manualScore: true,
+      feedback: true,
+      aiScore: true,
+      gradingStatus: true,
       attempt: { select: { examId: true, status: true } },
       attemptQuestion: {
         select: {
@@ -542,6 +560,8 @@ export const saveManualGrade = async (input: ManualGradeFormType) =>
             feedback: feedback?.trim() ? feedback.trim() : null,
             gradedById: session.user.id,
             gradedAt: now,
+            gradingStatus: "examiner_reviewed",
+            gradingSource: "examiner",
           },
         });
         await tx.gradeAudit.create({
@@ -560,6 +580,44 @@ export const saveManualGrade = async (input: ManualGradeFormType) =>
     );
     revalidateResults(exam.id, [answer.attemptId]);
     return markingResult(answerId, totals);
+  });
+
+/** Approve the provisional AI score as the examiner mark. */
+export const approveAiGrade = async (answerId: string) =>
+  runAction(async () => {
+    const session = await gradeSession();
+    const { answer, snapshot } = await loadAnswerForMarking(answerId, session);
+    if (answer.aiScore == null)
+      throw new ActionError("No AI score is available to approve.");
+    assertWithinPoints(answer.aiScore, snapshot.points);
+    return saveManualGrade({
+      answerId,
+      score: answer.aiScore,
+      feedback: answer.feedback ?? "",
+    }).then((res) => {
+      if (!res.ok) throw new ActionError(res.error);
+      return res.data;
+    });
+  });
+
+/** Retry AI grading for one written answer (never overwrites examiner marks). */
+export const retryAiGrading = async (answerId: string) =>
+  runAction(async () => {
+    const session = await gradeSession();
+    const { answer, exam } = await loadAnswerForMarking(answerId, session);
+    if (answer.manualScore != null || answer.gradingStatus === "examiner_reviewed")
+      throw new ActionError(
+        "This answer was reviewed by an examiner. Clear the mark before retrying AI.",
+      );
+    const { processWrittenAiGradingForAttempt } = await import(
+      "@/server/ai/processWrittenAiGrading"
+    );
+    const result = await processWrittenAiGradingForAttempt(answer.attemptId, {
+      forceRetry: true,
+      answerId,
+    });
+    revalidateResults(exam.id, [answer.attemptId]);
+    return result;
   });
 
 /**
