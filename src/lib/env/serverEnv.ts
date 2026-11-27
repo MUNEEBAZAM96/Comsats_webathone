@@ -5,10 +5,15 @@ export const serverEnv = createEnv({
   server: {
     DATABASE_URL: z
       .string()
-      .startsWith("file:./", {
-        error: "DATABASE_URL must start with file:./",
-      })
-      .min(1, { error: "DATABASE_URL is required" }),
+      .min(1, { error: "DATABASE_URL is required" })
+      .refine(
+        (value) =>
+          value.startsWith("postgresql://") || value.startsWith("postgres://"),
+        {
+          error:
+            "DATABASE_URL must be a Postgres connection string (postgresql:// or postgres://)",
+        },
+      ),
     BETTER_AUTH_SECRET: z.string().min(32),
     BETTER_AUTH_URL: z.url(),
     BETTER_AUTH_ALLOWED_ORIGINS: z.string().optional(),

@@ -9,42 +9,25 @@ import {
   RotateCcwIcon,
   TargetIcon,
 } from "lucide-react";
-import { requireRole } from "@/server/session";
-import prisma from "@/lib/database/dbClient";
-import { DashboardLink } from "@/components/Dashboard/DashboardLink";
-import { DashboardIntro } from "@/components/Dashboard/DashboardIntro";
-import {
-  DashboardRow,
-  DashboardSection,
-} from "@/components/Dashboard/DashboardSection";
-import { ActivityDashboardSkeleton } from "@/components/Dashboard/DashboardShellSkeleton";
-import { StatCard } from "@/components/Dashboard/StatCard";
-import { StatusBadge } from "@/components/Results/StatusBadge";
+import Link from "next/link";
+import type { Route } from "next";
+import { Suspense } from "react";
+import { DashboardShellSkeleton } from "@/components/Dashboard/DashboardShellSkeleton";
 
 export const metadata: Metadata = {
   title: "Dashboard",
   description: "Student dashboard",
 };
 
-const ExamLink = ({
-  examId,
-  resume,
-  primary = false,
-}: {
-  examId: string;
-  resume: boolean;
-  primary?: boolean;
-}) => {
-  const Icon = resume ? RotateCcwIcon : PlayIcon;
-  return (
-    <DashboardLink
-      href={`/student/exams/${examId}` as Route}
-      prefetch={false}
-      variant={primary ? "default" : "outline"}>
-      <Icon aria-hidden="true" /> {resume ? "Resume Exam" : "Start Exam"}
-    </DashboardLink>
-  );
-};
+const StudentDashboard = () => (
+  <Suspense fallback={<DashboardShellSkeleton />}>
+    <StudentDashboardContent />
+  </Suspense>
+);
+
+const StudentDashboardContent = async () => {
+  const session = await requireRole("student");
+  const userId = session.user.id;
 
 const StudentDashboardContent = async () => {
   const { user } = await requireRole("student");

@@ -1,3 +1,4 @@
+import AuthTestBanner from "@/components/Auth/AuthTestBanner";
 import ForgotPasswordForm from "@/components/Auth/ForgotPasswordForm";
 import { AuthHeading } from "@/components/Auth/AuthHeading";
 import { Metadata } from "next";
@@ -10,20 +11,28 @@ export const metadata: Metadata = {
 
 const ForgotPasswordPage = () => {
   return (
-    <section className="grid gap-8">
-      <AuthHeading
-        title="Forgot password"
-        description="Enter the email address associated with your account."
-      />
-      <ForgotPasswordForm />
-      <p className="border-t pt-6 text-center text-sm text-muted-foreground">
-        <Link
-          href="/"
-          className="font-semibold text-primary underline-offset-4 hover:underline"
-        >
-          Back to sign in
-        </Link>
-      </p>
+    <section className="grid h-dvh place-items-center">
+      <Card className="w-xs sm:w-sm">
+        <CardHeader className="text-center">
+          <CardTitle className="text-xl">Forgot password</CardTitle>
+          <CardDescription>
+            Enter your email and we&apos;ll send you a reset link
+          </CardDescription>
+        </CardHeader>
+
+        <CardContent className="grid gap-4">
+          <AuthTestBanner />
+          <ForgotPasswordForm />
+        </CardContent>
+
+        <CardFooter className="justify-center">
+          <Link
+            href="/"
+            className="text-muted-foreground text-xs hover:underline">
+            Back to sign in
+          </Link>
+        </CardFooter>
+      </Card>
     </section>
   );
 };

@@ -1,0 +1,14 @@
+---
+description: Postgres (Supabase) + Better Auth database conventions for this app
+alwaysApply: true
+---
+
+# Database and auth
+
+- Database is **PostgreSQL on Supabase**, not SQLite/LibSQL.
+- Runtime client: `src/lib/database/dbClient.ts` uses `pg` `Pool` + `@prisma/adapter-pg`. Import `PrismaClient` only from `@generated/prisma/client`.
+- `DATABASE_URL` must be `postgresql://` or `postgres://` (validated in `src/lib/env/serverEnv.ts`). Prefer `?sslmode=require&uselibpqcompat=true` for Node `pg` TLS against Supabase.
+- Never commit `.env`. Never log or print the full connection string.
+- Auth is **Better Auth only** (`src/lib/auth.ts`), with `prismaAdapter(..., { provider: "postgresql" })`. Do not add Firebase Auth, Firebase Data Connect, or a custom jose JWT stack.
+- Credential accounts must keep `accountId === user.id`. Seed via `npm run seed` (`prisma/seed.ts`).
+- SQLite history lives in `prisma/migrations_sqlite_archive/`. Active migrations are Postgres under `prisma/migrations/` with `migration_lock.toml` provider `postgresql`.

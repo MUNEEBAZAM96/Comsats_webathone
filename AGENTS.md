@@ -11,7 +11,7 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 # Stack
 
 - Next.js 16.2 + React 19.2, App Router, Turbopack, React Compiler on, `typedRoutes: true`
-- Prisma 7 (`provider = "prisma-client"`, output `../generated/prisma`) + `@prisma/adapter-libsql` (SQLite file-backed)
+- Prisma 7 (`provider = "prisma-client"`, output `../generated/prisma`) + `@prisma/adapter-pg` + `pg` (Supabase PostgreSQL)
 - Tailwind v4 (CSS-only config in `globals.css`; **no** `tailwind.config.ts`; PostCSS plugin `@tailwindcss/postcss`)
 - shadcn/ui `base-luma` style — primitives from `@base-ui/react` (not Radix). `components.json` sets `ui` → `@/components/shadcnui`
 - `next-themes` (default `dark`, `enableSystem={false}`), `react-toastify`, `lucide-react`, `date-fns`
@@ -42,7 +42,8 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 - **No `datasource.url` in schema** — URL comes from `prisma.config.ts` via `env("DATABASE_URL")` (loaded with `dotenv/config`). Do not add it back inline.
 - Import: `import { PrismaClient } from "@generated/prisma/client"` — there is no `@prisma/client` import.
 - Singleton: `src/lib/database/dbClient.ts` — use this, never instantiate `PrismaClient` elsewhere.
-- Adapter: `PrismaLibSql` — used in both `dbClient.ts` and `prisma/seed.ts`.
+- Adapter: `PrismaPg` + `pg` `Pool` in `src/lib/database/dbClient.ts` (Supabase needs `uselibpqcompat=true&sslmode=require` in `DATABASE_URL` for Node `pg` TLS).
+- Active migrations are Postgres under `prisma/migrations/` (`migration_lock.toml` provider `postgresql`). Old SQLite history is archived in `prisma/migrations_sqlite_archive/`.
 - Build fails without `prisma generate`. Scripts `build` and `prod` do it automatically; raw `next build` will fail.
 - `generated/` is gitignored and ESLint-ignored.
 - Models include: User, Session, Account, Verification, Exam, ExamAssignment, ExamProctor, **Subject**, **Topic**, **BankQuestion**, **Question**, **ExamAttempt**, **Answer**.
@@ -59,7 +60,7 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
 - `src/lib/env/serverEnv.ts` & `clientEnv.ts` — loaded as side effects in `next.config.ts`.
 - `experimental__runtimeEnv: process.env` in `serverEnv.ts` — keep the `experimental__` prefix verbatim.
-- `DATABASE_URL` must start with `file:./` (validated by Zod).
+- `DATABASE_URL` must be a Postgres URL (`postgresql://` or `postgres://`, validated by Zod). Never commit real credentials; see `.env.example`.
 - New vars: add to `serverEnv.ts` (server) or `clientEnv.ts` (must be `NEXT_PUBLIC_*`) and mirror in `.env.example`.
 
 # Auth (Better Auth)

@@ -17,13 +17,22 @@ import { ActivityDashboardSkeleton } from "@/components/Dashboard/DashboardShell
 import { DashboardIntro } from "@/components/Dashboard/DashboardIntro";
 import { StatCard } from "@/components/Dashboard/StatCard";
 import prisma from "@/lib/database/dbClient";
+import type { Route } from "next";
+import { Suspense } from "react";
+import { DashboardShellSkeleton } from "@/components/Dashboard/DashboardShellSkeleton";
 
 export const metadata: Metadata = {
   title: "Proctor Dashboard",
   description: "Monitor exams and student activity",
 };
 
-const ProctorDashboardPage = async () => {
+const ProctorDashboardPage = () => (
+  <Suspense fallback={<DashboardShellSkeleton />}>
+    <ProctorDashboardContent />
+  </Suspense>
+);
+
+const ProctorDashboardContent = async () => {
   const session = await requireRole("proctor");
 
   const proctorAssignments = await prisma.examProctor.findMany({
@@ -176,24 +185,5 @@ const ProctorDashboardPage = async () => {
   );
 };
 
-const MonitorLink = ({
-  examId,
-  primary = false,
-}: {
-  examId: string;
-  primary?: boolean;
-}) => (
-  <DashboardLink
-    href={`/proctor/exams/${examId}` as Route}
-    variant={primary ? "default" : "outline"}>
-    <EyeIcon aria-hidden="true" /> Open Monitor
-  </DashboardLink>
-);
+export default ProctorDashboardPage;
 
-const ProctorDashboard = () => (
-  <Suspense fallback={<ActivityDashboardSkeleton />}>
-    <ProctorDashboardPage />
-  </Suspense>
-);
-
-export default ProctorDashboard;

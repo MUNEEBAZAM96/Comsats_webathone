@@ -32,7 +32,7 @@ A modern, role-based online examination platform built with Next.js 16. Supports
 | **Framework**       | Next.js 16.2 (App Router, Turbopack, React Compiler)                                                        |
 | **React**           | 19.2, Server Components, `typedRoutes: true`                                                                |
 | **Styling**         | Tailwind v4 (`@theme` in CSS, no `tailwind.config.ts`), shadcn/ui `base-luma` (`@base-ui/react` primitives) |
-| **Database**        | SQLite via Prisma 7 + `@prisma/adapter-libsql`                                                              |
+| **Database**        | PostgreSQL (Supabase) via Prisma 7 + `@prisma/adapter-pg` + `pg`                                            |
 | **Auth**            | Better Auth 1.7 (email/password, admin plugin, 4 roles)                                                     |
 | **Forms**           | react-hook-form + Zod (`@t3-oss/env-nextjs`)                                                                |
 | **Package Manager** | npm >=11                                                                                                    |
@@ -40,7 +40,7 @@ A modern, role-based online examination platform built with Next.js 16. Supports
 ## ✅ Prerequisites
 
 - Node.js >=24 with npm >=11
-- SQLite (bundled via libsql, no separate install required)
+- A Supabase Postgres project and a `DATABASE_URL` with SSL (`sslmode=require&uselibpqcompat=true`)
 
 ## 🚀 Getting Started
 
@@ -67,7 +67,7 @@ Edit `.env` with your values:
 
 | Variable                       | Description                                       | Default                 |
 | ------------------------------ | ------------------------------------------------- | ----------------------- |
-| `DATABASE_URL`                 | SQLite database path                              | `file:./prisma/dev.db`  |
+| `DATABASE_URL`                 | Supabase Postgres URL (encode `@` in password as `%40`) | `postgresql://USER:PASSWORD@HOST:5432/postgres?sslmode=require&uselibpqcompat=true` |
 | `BETTER_AUTH_SECRET`           | Auth secret (generate: `openssl rand -base64 32`) | —                       |
 | `BETTER_AUTH_URL`              | Base URL of the app                               | `http://localhost:3000` |
 | `BETTER_AUTH_ALLOWED_ORIGINS`  | CORS origins (comma-separated)                    | `http://localhost:3000` |
@@ -77,8 +77,14 @@ Edit `.env` with your values:
 
 ### 🗄️ Database Setup
 
+Point `DATABASE_URL` at your Supabase Postgres instance (see `.env.example`). Auth (Better Auth) stores users/sessions/accounts in the same database.
+
 ```bash
-# Run migrations and generate Prisma client
+# Apply Postgres migrations and generate Prisma client
+npx prisma migrate deploy
+npx prisma generate
+
+# Or interactive local migrate (prompts for a name):
 npm run migrate
 
 # Seed with test data (4 users + 10 programming bank questions)
@@ -186,11 +192,12 @@ src/
 
 ## 🔧 Prisma
 
-- Schema: `prisma/schema.prisma`
+- Schema: `prisma/schema.prisma` (`provider = "postgresql"`)
 - Client output: `generated/prisma/` (gitignored)
 - Import: `import { PrismaClient } from "@generated/prisma/client"`
-- Singleton: `src/lib/database/dbClient.ts`
+- Singleton: `src/lib/database/dbClient.ts` (`PrismaPg` + `pg` Pool)
 - No `datasource.url` in schema — URL injected via `prisma.config.ts` from env
+- Postgres migrations under `prisma/migrations/`; archived SQLite history in `prisma/migrations_sqlite_archive/`
 
 ## 📐 Key Conventions
 
