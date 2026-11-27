@@ -5,8 +5,7 @@ import {
   GraduationCapIcon,
   UsersIcon,
 } from "lucide-react";
-import { auth } from "@/lib/auth";
-import { headers } from "next/headers";
+import { requireRole } from "@/server/session";
 import Link from "next/link";
 import { Badge } from "@/components/shadcnui/badge";
 import { Button } from "@/components/shadcnui/button";
@@ -26,10 +25,10 @@ export const metadata: Metadata = {
 };
 
 const ProctorDashboardPage = async () => {
-  const session = await auth.api.getSession({ headers: await headers() });
+  const session = await requireRole("proctor");
 
   const proctorAssignments = await prisma.examProctor.findMany({
-    where: { proctorId: session!.user.id },
+    where: { proctorId: session.user.id },
     include: {
       exam: {
         select: {

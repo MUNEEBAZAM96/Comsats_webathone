@@ -1,8 +1,10 @@
 <!-- BEGIN:nextjs-agent-rules -->
 
-# This is NOT the Next.js you know
+## This is NOT the Next.js you know
 
-This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` before writing any code. Heed deprecation notices.
+This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` (resolved from this file's directory; in monorepos the `next` package may not be visible from the repo root) before writing any code. Heed deprecation notices.
+
+This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
 
 <!-- END:nextjs-agent-rules -->
 
@@ -14,7 +16,7 @@ This version has breaking changes — APIs, conventions, and file structure may 
 - shadcn/ui `base-luma` style — primitives from `@base-ui/react` (not Radix). `components.json` sets `ui` → `@/components/shadcnui`
 - `next-themes` (default `dark`, `enableSystem={false}`), `react-toastify`, `lucide-react`, `date-fns`
 - `@t3-oss/env-nextjs` + Zod for env validation
-- Better Auth 1.6 (email/password, admin plugin with 4 roles)
+- Better Auth 1.7 (email/password, admin plugin with 4 roles)
 - Package manager: npm (generate and commit `package-lock.json`; Node.js >=24, npm >=11)
 
 # Verification
@@ -65,6 +67,8 @@ This version has breaking changes — APIs, conventions, and file structure may 
 - Configured in `src/lib/auth.ts` (server) and `src/lib/auth-client.ts` (client).
 - 4 roles: `admin`, `examiner`, `proctor`, `student` (default). Custom resources: `exam` (create/read/update/delete/publish/assign), `result` (read/export/delete).
 - Role layouts check `session.user.role` server-side; login redirects client-side via `data.user.role`.
+- **Layouts are not a security boundary.** Next.js renders a page independently of its layouts, so a layout redirect still leaves the page's output in the RSC payload. Every page under `(private)/` must check the session itself: call `requireRole("admin")` / `requireSession()` from `src/server/session.ts` first, or load all of its data through a server function that checks the session and role.
+- Credential accounts must have `accountId` equal to the user's id (Better Auth sign-in rejects anything else). `prisma/seed.ts` follows this and hashes through `hashPasswordFunction`.
 - Permission check (server): `auth.api.userHasPermission({ body: { userId, permission: { exam: ["create"] } } })`
 - Permission check (client): `authClient.admin.hasPermission({ permission: { exam: ["create"] } })`
 - Password reset is a `console.log` stub. Argon2 hashing uses `BETTER_AUTH_SECRET` as secret key.

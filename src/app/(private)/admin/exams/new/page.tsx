@@ -1,13 +1,16 @@
 import type { Metadata } from "next";
 import ExamForm from "@/components/Exam/ExamForm";
 import { createExam } from "@/server/examActions";
+import { requireRole } from "@/server/session";
 
 export const metadata: Metadata = {
   title: "Create Exam",
   description: "Create a new exam",
 };
 
-const AdminCreateExamPage = () => {
+const AdminCreateExamPage = async () => {
+  await requireRole("admin");
+
   return (
     <section className="grid gap-6">
       <h1 className="text-2xl font-medium">Create Exam</h1>

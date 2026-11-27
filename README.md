@@ -33,7 +33,7 @@ A modern, role-based online examination platform built with Next.js 16. Supports
 | **React**           | 19.2, Server Components, `typedRoutes: true`                                                                |
 | **Styling**         | Tailwind v4 (`@theme` in CSS, no `tailwind.config.ts`), shadcn/ui `base-luma` (`@base-ui/react` primitives) |
 | **Database**        | SQLite via Prisma 7 + `@prisma/adapter-libsql`                                                              |
-| **Auth**            | Better Auth 1.6 (email/password, admin plugin, 4 roles)                                                     |
+| **Auth**            | Better Auth 1.7 (email/password, admin plugin, 4 roles)                                                     |
 | **Forms**           | react-hook-form + Zod (`@t3-oss/env-nextjs`)                                                                |
 | **Package Manager** | npm >=11                                                                                                    |
 
@@ -149,7 +149,7 @@ After running `npm run seed`, you can log in with:
 ```
 src/
 ├── app/                    # Next.js App Router pages
-│   └── (private)/          # Authenticated layout (gated by middleware)
+│   └── (private)/          # Signed-in area (layouts redirect; each page checks the session via src/server/session.ts)
 │       ├── admin/          # Admin dashboard, exams, questions, results, users
 │       ├── examiner/       # Examiner dashboard, exams, questions, results
 │       ├── proctor/        # Proctor dashboard (exam monitoring)

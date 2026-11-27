@@ -11,8 +11,8 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/shadcnui/card";
-import { auth } from "@/lib/auth";
 import prisma from "@/lib/database/dbClient";
+import { requireRole } from "@/server/session";
 import { format } from "date-fns";
 import {
   BookOpenIcon,
@@ -24,7 +24,6 @@ import {
 } from "lucide-react";
 import type { Metadata, Route } from "next";
 import { cacheLife, cacheTag } from "next/cache";
-import { headers } from "next/headers";
 import Link from "next/link";
 import { Suspense } from "react";
 
@@ -42,7 +41,9 @@ const AdminDashboard = () => (
 );
 
 const AdminDashboardContent = async () => {
-  const session = await auth.api.getSession({ headers: await headers() });
+  // The admin layout redirects other roles but does not stop this page from
+  // rendering, so the page checks the role before any stats are loaded.
+  const session = await requireRole("admin");
 
   return (
     <>

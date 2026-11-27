@@ -50,6 +50,11 @@ export const getExamById = async (id: string) => {
     .catch(() => ({ success: false as const }));
   if (!canRead) redirect("/");
 
+  // Proctors also hold exam:read (for monitoring), but this returns the
+  // questions with their answer keys, so only admins and examiners may load it.
+  if (session.user.role !== "admin" && session.user.role !== "examiner")
+    redirect("/");
+
   let exam;
   try {
     exam = await prisma.exam.findUnique({
