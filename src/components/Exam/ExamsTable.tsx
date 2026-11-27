@@ -25,7 +25,7 @@ type ExamRow = {
   status: string;
   duration: number;
   createdAt: Date;
-  _count: { questions: number };
+  _count: { questions: number; assignments?: number };
   createdBy: { name: string };
 };
 
@@ -83,6 +83,7 @@ const ExamsTable = ({ exams, basePath }: ExamsTableProps) => {
             <th className="px-4 py-3 text-left font-medium">Title</th>
             <th className="px-4 py-3 text-left font-medium">Status</th>
             <th className="px-4 py-3 text-left font-medium">Questions</th>
+            <th className="px-4 py-3 text-left font-medium">Candidates</th>
             <th className="px-4 py-3 text-left font-medium">Duration</th>
             <th className="px-4 py-3 text-left font-medium">Created by</th>
             <th className="px-4 py-3 text-right font-medium">Actions</th>
@@ -106,6 +107,9 @@ const ExamsTable = ({ exams, basePath }: ExamsTableProps) => {
               </td>
               <td className="text-muted-foreground px-4 py-3">
                 {exam._count.questions}
+              </td>
+              <td className="text-muted-foreground px-4 py-3">
+                {exam._count.assignments ?? 0}
               </td>
               <td className="text-muted-foreground px-4 py-3">
                 {exam.duration} min

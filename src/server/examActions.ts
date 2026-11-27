@@ -62,7 +62,7 @@ export const getExams = async () => {
       where: role === "admin" ? undefined : { createdById: session.user.id },
       orderBy: { createdAt: "desc" },
       include: {
-        _count: { select: { questions: true } },
+        _count: { select: { questions: true, assignments: true } },
         createdBy: { select: { name: true } },
       },
     });

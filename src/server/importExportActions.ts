@@ -2,6 +2,7 @@
 
 import "server-only";
 
+import { randomUUID } from "node:crypto";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { hashPasswordFunction } from "@/lib/argon2";
@@ -120,37 +121,49 @@ export const commitCandidateImport = async (
   const session = await requireAdmin();
   const validRows = revalidateCandidateRows(rows);
 
-  let created = 0;
-  let skipped = 0;
+  const uniqueRows = [
+    ...new Map(validRows.map((row) => [row.email, row])).values(),
+  ];
+  const existing = await prisma.user.findMany({
+    where: { email: { in: uniqueRows.map((row) => row.email) } },
+    select: { email: true },
+  });
+  const existingEmails = new Set(existing.map((u) => u.email));
+  const toCreate = uniqueRows.filter((row) => !existingEmails.has(row.email));
+
+  // Argon2 is slow by design; hash before opening the transaction so a large
+  // file cannot exceed the interactive transaction timeout.
+  const prepared: Array<CandidateImportRow & { id: string; hashed: string }> =
+    [];
+  for (const row of toCreate) {
+    prepared.push({
+      ...row,
+      id: randomUUID(),
+      hashed: await hashPasswordFunction(row.password),
+    });
+  }
+
+  const created = prepared.length;
+  const skipped = validRows.length - created;
 
   await prisma.$transaction(async (tx) => {
-    for (const row of validRows) {
-      const existing = await tx.user.findUnique({
-        where: { email: row.email.toLowerCase() },
-      });
-      if (existing) {
-        skipped++;
-        continue;
-      }
-      const hashed = await hashPasswordFunction(row.password);
-      const user = await tx.user.create({
-        data: {
-          name: row.name,
-          email: row.email.toLowerCase(),
-          emailVerified: true,
-          role: "student",
-        },
-      });
-      await tx.account.create({
-        data: {
-          accountId: user.id,
-          providerId: "credential",
-          userId: user.id,
-          password: hashed,
-        },
-      });
-      created++;
-    }
+    await tx.user.createMany({
+      data: prepared.map((row) => ({
+        id: row.id,
+        name: row.name,
+        email: row.email,
+        emailVerified: true,
+        role: "student",
+      })),
+    });
+    await tx.account.createMany({
+      data: prepared.map((row) => ({
+        accountId: row.id,
+        providerId: "credential",
+        userId: row.id,
+        password: row.hashed,
+      })),
+    });
 
     await tx.importJob.create({
       data: {

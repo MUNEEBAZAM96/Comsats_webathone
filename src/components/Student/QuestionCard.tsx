@@ -23,6 +23,8 @@ export const QuestionCard = ({
   const options = question.options
     ? question.options.split("\n").filter(Boolean)
     : [];
+  const promptId = `question-${question.id}-prompt`;
+  const trueFalseOptions = options.length === 2 ? options : ["True", "False"];
 
   const selectedValues = value ? value.split("\n").filter(Boolean) : [];
 
@@ -37,7 +39,16 @@ export const QuestionCard = ({
     switch (question.type) {
       case "multiple_choice":
         return (
-          <div className="grid gap-3">
+          <div
+            role="group"
+            aria-labelledby={promptId}
+            aria-describedby={`${promptId}-hint`}
+            className="grid gap-3">
+            <p
+              id={`${promptId}-hint`}
+              className="text-muted-foreground text-sm">
+              Select all that apply.
+            </p>
             {options.map((opt) => {
               const checked = selectedValues.includes(opt);
               return (
@@ -63,7 +74,10 @@ export const QuestionCard = ({
 
       case "single_choice":
         return (
-          <div className="grid gap-3">
+          <div
+            role="radiogroup"
+            aria-labelledby={promptId}
+            className="grid gap-3">
             {options.map((opt) => (
               <Label
                 key={opt}
@@ -87,8 +101,11 @@ export const QuestionCard = ({
 
       case "true_false":
         return (
-          <div className="grid gap-3 sm:grid-cols-2">
-            {["True", "False"].map((opt) => (
+          <div
+            role="radiogroup"
+            aria-labelledby={promptId}
+            className="grid gap-3 sm:grid-cols-2">
+            {trueFalseOptions.map((opt) => (
               <Label
                 key={opt}
                 className={`hover:bg-accent flex cursor-pointer items-center gap-3 rounded-md border px-4 py-3 text-base leading-relaxed transition-colors ${
@@ -112,7 +129,8 @@ export const QuestionCard = ({
       default:
         return (
           <Textarea
-            aria-label="Your answer"
+            aria-labelledby={promptId}
+            maxLength={50_000}
             value={value}
             onChange={(e) => onChange(e.target.value)}
             placeholder="Type your answer..."
@@ -126,7 +144,9 @@ export const QuestionCard = ({
   return (
     <div className="grid gap-5">
       <div className="flex flex-wrap items-start justify-between gap-2 sm:flex-nowrap sm:gap-4">
-        <p className="min-w-0 break-words text-lg leading-relaxed font-medium sm:text-xl">
+        <p
+          id={promptId}
+          className="min-w-0 break-words text-lg leading-relaxed font-medium whitespace-pre-wrap sm:text-xl">
           {question.text}
         </p>
         <span className="bg-muted shrink-0 rounded-full px-3 py-1 text-xs font-medium tabular-nums">

@@ -9,12 +9,15 @@ import {
   ChevronRightIcon,
   ClockIcon,
   FlagIcon,
+  InfoIcon,
   LayoutGridIcon,
   Loader2Icon,
   TriangleAlertIcon,
+  WifiOffIcon,
 } from "lucide-react";
+import type { Route } from "next";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "../shadcnui/button";
 import {
   Dialog,
@@ -39,10 +42,15 @@ import { DigitalScratchpad } from "@/features/scratchpad/components/DigitalScrat
 import { OfflineSyncBanner } from "@/features/exam-workspace/offline/OfflineSyncBanner";
 import {
   clearAttemptAnswers,
+  listPendingAnswers,
   markAnswerSynced,
   upsertLocalAnswer,
 } from "@/features/exam-workspace/offline/answer-storage";
-
+import { useOnlineStatus } from "@/features/exam-workspace/offline/connectivity";
+import {
+  clearReviewFlags,
+  useReviewFlags,
+} from "@/features/exam-workspace/reviewFlags";
 type Question = {
   id: string;
   text: string;
@@ -55,19 +63,34 @@ type Question = {
 type ExamPlayerProps = {
   attemptId: string;
   examTitle: string;
+  instructions?: string | null;
+  /** Remaining time computed on the server at render. */
   initialRemainingMs: number;
   questions: Question[];
   savedAnswers: { questionId: string; text: string | null }[];
 };
 
+/** Re-check the server clock this often while the exam is open. */
+const CLOCK_RESYNC_MS = 60_000;
+/** Flush the in-flight edit this many seconds before the deadline. */
+const FINAL_FLUSH_SECONDS = 3;
+const AUTOSAVE_DELAY_MS = 600;
+
 const formatTime = (seconds: number) => {
-  const minutes = Math.floor(seconds / 60);
-  return `${minutes.toString().padStart(2, "0")}:${(seconds % 60).toString().padStart(2, "0")}`;
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const secs = (seconds % 60).toString().padStart(2, "0");
+  return hours > 0 ?
+      `${hours}:${minutes.toString().padStart(2, "0")}:${secs}`
+    : `${minutes.toString().padStart(2, "0")}:${secs}`;
 };
+
+const isAnsweredText = (text: string | undefined) => Boolean(text?.trim());
 
 export const ExamPlayer = ({
   attemptId,
   examTitle,
+  instructions,
   initialRemainingMs,
   questions,
   savedAnswers,
@@ -79,7 +102,6 @@ export const ExamPlayer = ({
     ),
   );
   const [acknowledged, setAcknowledged] = useState(answers);
-  const [flagged, setFlagged] = useState<string[]>([]);
   const [timeLeft, setTimeLeft] = useState(
     Math.ceil(initialRemainingMs / 1000),
   );
@@ -87,20 +109,31 @@ export const ExamPlayer = ({
   const [saveFailed, setSaveFailed] = useState(false);
   const [submitError, setSubmitError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [autoSubmitting, setAutoSubmitting] = useState(false);
   const [navigatorOpen, setNavigatorOpen] = useState(false);
   const [reviewOpen, setReviewOpen] = useState(false);
 
   const router = useRouter();
+  const online = useOnlineStatus();
+  const questionIds = useMemo(() => questions.map((q) => q.id), [questions]);
+  const { flagged, toggle: toggleFlag } = useReviewFlags(
+    attemptId,
+    questionIds,
+  );
   const submittingRef = useRef(false);
   const answersRef = useRef(answers);
   const acknowledgedRef = useRef(answers);
   const saveQueue = useRef<Promise<void>>(Promise.resolve());
   const autosaveTimeout = useRef<number>(undefined);
+  /** Deadline on the monotonic `performance.now()` clock; set in effects. */
+  const deadlinePerfRef = useRef<number | null>(null);
+  const finalFlushDoneRef = useRef(false);
   const questionHeading = useRef<HTMLHeadingElement>(null);
   const currentQuestion = questions[currentIndex];
   const answered = questions.filter(({ id }) =>
-    Boolean(answers[id]?.trim()),
+    isAnsweredText(answers[id]),
   ).length;
+  const unanswered = questions.length - answered;
   const hasUnsaved = questions.some(
     ({ id }) => (answers[id] ?? "") !== (acknowledged[id] ?? ""),
   );
@@ -140,50 +173,72 @@ export const ExamPlayer = ({
     [attemptId],
   );
 
+  /** Send every answer the server has not acknowledged yet. */
+  const flushUnsaved = useCallback(() => {
+    window.clearTimeout(autosaveTimeout.current);
+    return Promise.all(
+      Object.entries(answersRef.current)
+        .filter(([id, text]) => (acknowledgedRef.current[id] ?? "") !== text)
+        .map(([id, text]) => saveAnswer(id, text).catch(() => undefined)),
+    );
+  }, [saveAnswer]);
+
+  const goToResult = useCallback(() => {
+    clearReviewFlags(attemptId);
+    router.replace(`/student/results/${attemptId}` as Route);
+  }, [attemptId, router]);
+
   const finalize = useCallback(
     async (expired: boolean) => {
       if (submittingRef.current) return;
       submittingRef.current = true;
-      window.clearTimeout(autosaveTimeout.current);
       setSubmitting(true);
+      setAutoSubmitting(expired);
       setSubmitError("");
       try {
         await saveQueue.current.catch(() => undefined);
-        // Always flush UI state — including timer auto-submit — so debounced
-        // edits are not dropped when the exam window closes.
-        await Promise.all(
-          Object.entries(answersRef.current).map(([id, text]) =>
-            saveAnswer(id, text).catch(() => undefined),
-          ),
-        );
+        // Flush on manual and timer submit alike so debounced edits are not
+        // dropped. The server rejects any write that lands after the deadline.
+        await flushUnsaved();
         await submitExam(attemptId);
         try {
           await clearAttemptAnswers(attemptId);
         } catch {
           // Local cleanup is best-effort; server submit already succeeded.
         }
-        router.push(`/student/results/${attemptId}`);
+        goToResult();
       } catch {
         setSubmitError(
-          expired
-            ? "Submission could not be confirmed. Retry to check the result."
-            : "Submission could not be confirmed. Check your connection and try again.",
+          expired ?
+            "Time is up, but submission could not be confirmed. Your saved answers are kept — retry to finish."
+          : "Submission could not be confirmed. Check your connection and try again.",
         );
         setSubmitting(false);
+        setAutoSubmitting(false);
         submittingRef.current = false;
       }
     },
-    [attemptId, router, saveAnswer],
+    [attemptId, flushUnsaved, goToResult],
   );
 
+  // Countdown on the monotonic clock, seeded from server-computed remaining time.
   useEffect(() => {
-    const deadline = performance.now() + initialRemainingMs;
+    deadlinePerfRef.current = performance.now() + initialRemainingMs;
     const tick = () => {
+      const deadline = deadlinePerfRef.current ?? performance.now();
       const seconds = Math.max(
         0,
         Math.ceil((deadline - performance.now()) / 1000),
       );
       setTimeLeft(seconds);
+      if (
+        seconds <= FINAL_FLUSH_SECONDS &&
+        seconds > 0 &&
+        !finalFlushDoneRef.current
+      ) {
+        finalFlushDoneRef.current = true;
+        void flushUnsaved();
+      }
       if (seconds === 0) {
         window.clearInterval(interval);
         void finalize(true);
@@ -195,7 +250,89 @@ export const ExamPlayer = ({
       window.clearInterval(interval);
       window.clearTimeout(autosaveTimeout.current);
     };
-  }, [finalize, initialRemainingMs]);
+  }, [finalize, flushUnsaved, initialRemainingMs]);
+
+  // Correct drift (sleep, throttled tabs) from the server clock. Never extends
+  // the server deadline — the server rejects late writes regardless.
+  useEffect(() => {
+    let cancelled = false;
+    const resync = async () => {
+      if (submittingRef.current) return;
+      try {
+        const { getAttemptClock } = await import(
+          "@/server/studentExamActions"
+        );
+        const clock = await getAttemptClock(attemptId);
+        if (cancelled) return;
+        if (clock.status !== "in_progress") {
+          submittingRef.current = true;
+          goToResult();
+          return;
+        }
+        deadlinePerfRef.current = performance.now() + clock.remainingMs;
+        if (clock.remainingMs > FINAL_FLUSH_SECONDS * 1000) {
+          finalFlushDoneRef.current = false;
+          // Retry answers whose earlier save failed.
+          void flushUnsaved();
+        }
+      } catch {
+        // Offline or transient failure — keep the local countdown.
+      }
+    };
+    const onVisible = () => {
+      if (document.visibilityState === "visible") void resync();
+    };
+    const interval = window.setInterval(() => void resync(), CLOCK_RESYNC_MS);
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", onVisible);
+    window.addEventListener("online", onVisible);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", onVisible);
+      window.removeEventListener("online", onVisible);
+    };
+  }, [attemptId, flushUnsaved, goToResult]);
+
+  // Restore answers saved on this device but never acknowledged by the server
+  // (e.g. edited offline, then refreshed). Only fills questions the candidate
+  // has not edited since load; the server still validates every write.
+  useEffect(() => {
+    let cancelled = false;
+    const known = new Set(questionIds);
+    void listPendingAnswers(attemptId)
+      .then((rows) => {
+        if (cancelled || rows.length === 0) return;
+        const next = { ...answersRef.current };
+        const restored: [string, string][] = [];
+        for (const row of rows) {
+          if (!known.has(row.questionId)) continue;
+          const untouched =
+            (next[row.questionId] ?? "") ===
+            (acknowledgedRef.current[row.questionId] ?? "");
+          if (untouched && next[row.questionId] !== row.text) {
+            next[row.questionId] = row.text;
+            restored.push([row.questionId, row.text]);
+          }
+        }
+        if (restored.length === 0) return;
+        answersRef.current = next;
+        setAnswers(next);
+        restored.forEach(([id, text]) => {
+          void saveAnswer(id, text).catch(() => undefined);
+        });
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [attemptId, questionIds, saveAnswer]);
+
+  // When connectivity returns, push anything the server has not acknowledged.
+  useEffect(() => {
+    if (online && !submittingRef.current) void flushUnsaved();
+  }, [online, flushUnsaved]);
 
   const goTo = (index: number) => {
     if (index < 0 || index >= questions.length) return;
@@ -219,17 +356,16 @@ export const ExamPlayer = ({
     window.clearTimeout(autosaveTimeout.current);
     autosaveTimeout.current = window.setTimeout(() => {
       void saveAnswer(id, text).catch(() => {});
-    }, 600);
+    }, AUTOSAVE_DELAY_MS);
   };
 
   const syncLabel =
-    pendingSaves > 0
-      ? "Saving…"
-      : hasUnsaved
-        ? saveFailed
-          ? "Some answers could not be saved"
-          : "Unsaved changes"
-        : "All answers saved";
+    !online && hasUnsaved ? "Offline — answers kept on this device"
+    : pendingSaves > 0 ? "Saving…"
+    : hasUnsaved ?
+      saveFailed ? "Some answers could not be saved — retrying"
+      : "Unsaved changes"
+    : "All answers saved";
   const deadlineLabel =
     timeLeft === 0
       ? "Time expired"
@@ -244,7 +380,7 @@ export const ExamPlayer = ({
       className="grid grid-cols-[repeat(auto-fill,minmax(2.75rem,1fr))] gap-2"
     >
       {questions.map((question, index) => {
-        const isAnswered = Boolean(answers[question.id]?.trim());
+        const isAnswered = isAnsweredText(answers[question.id]);
         const isFlagged = flagged.includes(question.id);
         return (
           <button
@@ -290,6 +426,31 @@ export const ExamPlayer = ({
             <h1 className="min-w-0 break-words text-sm! font-semibold! sm:text-lg!">
               {examTitle}
             </h1>
+            {instructions?.trim() && (
+              <Dialog>
+                <DialogTrigger
+                  render={
+                    <Button
+                      variant="outline"
+                      size="lg"
+                      className="shrink-0"
+                    />
+                  }>
+                  <InfoIcon aria-hidden="true" />
+                  <span className="hidden sm:inline">Instructions</span>
+                  <span className="sr-only sm:hidden">Instructions</span>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Instructions</DialogTitle>
+                    <DialogDescription className="whitespace-pre-wrap">
+                      {instructions}
+                    </DialogDescription>
+                  </DialogHeader>
+                  <DialogFooter showCloseButton />
+                </DialogContent>
+              </Dialog>
+            )}
           </div>
           <div
             className={cn(
@@ -361,6 +522,16 @@ export const ExamPlayer = ({
             }}
           />
 
+          {autoSubmitting && !submitError && (
+            <p
+              role="status"
+              className="flex items-center gap-2 rounded-md bg-warning-surface px-4 py-3 text-sm text-warning"
+            >
+              <Loader2Icon aria-hidden="true" className="size-4 animate-spin" />
+              Time is up — submitting your saved answers…
+            </p>
+          )}
+
           {submitError && (
             <p
               role="alert"
@@ -412,15 +583,10 @@ export const ExamPlayer = ({
                   currentFlagged &&
                     "border-warning bg-warning-surface text-warning",
                 )}
-                onClick={() =>
-                  setFlagged((previous) =>
-                    currentFlagged
-                      ? previous.filter((id) => id !== currentQuestion.id)
-                      : [...previous, currentQuestion.id],
-                  )
-                }
+                onClick={() => toggleFlag(currentQuestion.id)}
               >
-                <FlagIcon aria-hidden="true" /> Mark for review
+                <FlagIcon aria-hidden="true" />
+                {currentFlagged ? "Marked for review" : "Mark for review"}
               </Button>
             )}
             <Sheet open={navigatorOpen} onOpenChange={setNavigatorOpen}>
@@ -501,11 +667,76 @@ export const ExamPlayer = ({
                 <DialogHeader>
                   <DialogTitle>Submit examination?</DialogTitle>
                   <DialogDescription>
-                    {answered} answered, {questions.length - answered}{" "}
-                    unanswered, and {flagged.length} marked for review. After
-                    submission, you cannot change your answers.
+                    After submission, you cannot change your answers.
                   </DialogDescription>
                 </DialogHeader>
+                <dl className="grid grid-cols-3 gap-2 text-center">
+                  <div className="rounded-md bg-secondary p-3">
+                    <dt className="text-xs text-muted-foreground">Answered</dt>
+                    <dd className="text-xl font-semibold tabular-nums">
+                      {answered}
+                    </dd>
+                  </div>
+                  <div className="rounded-md bg-muted p-3">
+                    <dt className="text-xs text-muted-foreground">
+                      Unanswered
+                    </dt>
+                    <dd className="text-xl font-semibold tabular-nums">
+                      {unanswered}
+                    </dd>
+                  </div>
+                  <div className="rounded-md bg-warning-surface p-3">
+                    <dt className="text-xs text-muted-foreground">
+                      For review
+                    </dt>
+                    <dd className="text-xl font-semibold tabular-nums">
+                      {flagged.length}
+                    </dd>
+                  </div>
+                </dl>
+                {(unanswered > 0 || flagged.length > 0) && (
+                  <div className="grid gap-2 text-sm">
+                    <p className="text-muted-foreground">
+                      Jump to a question to check it:
+                    </p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {questions.map((q, index) => {
+                        const needsLook =
+                          !isAnsweredText(answers[q.id]) ||
+                          flagged.includes(q.id);
+                        if (!needsLook) return null;
+                        return (
+                          <Button
+                            key={q.id}
+                            variant="outline"
+                            size="lg"
+                            aria-label={`Go to question ${index + 1}`}
+                            onClick={() => {
+                              setReviewOpen(false);
+                              goTo(index);
+                            }}
+                          >
+                            {index + 1}
+                            {flagged.includes(q.id) && (
+                              <FlagIcon
+                                aria-hidden="true"
+                                className="text-warning"
+                              />
+                            )}
+                          </Button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+                {(!online || hasUnsaved) && (
+                  <p className="flex items-start gap-2 rounded-md bg-warning-surface px-3 py-2 text-sm text-warning">
+                    <WifiOffIcon aria-hidden="true" className="size-4 shrink-0" />
+                    {online ?
+                      "Some answers are still saving. They will be sent before submission."
+                    : "You are offline. Submission needs a connection — your answers stay on this device until then."}
+                  </p>
+                )}
                 <DialogFooter showCloseButton>
                   <DialogClose
                     render={
