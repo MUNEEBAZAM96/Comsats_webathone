@@ -7,11 +7,11 @@ A full-stack examination platform being developed for **Technoverse 5.0 – Web-
 | Problem | Secure Examination Management System |
 | Architecture | Next.js modular monolith |
 | Language / package manager | TypeScript / npm |
-| Current database | Supabase PostgreSQL through Prisma and the pg adapter |
+| Current database | Supabase PostgreSQL through Prisma and the `pg` adapter |
 | Innovation direction | Failure-Resilient Examinations — Challenge 5.3 |
-| Current focus | Validate and strengthen Phase 01: Authentication and Authorization |
+| Current focus | Validate Phase 07 offline sync end-to-end and Phase 11 security testing |
 
-This repository builds on an existing examination starter application. Authentication, dashboards, exam management, assignments, monitoring, and automatic grading already have implementations. The roadmap below distinguishes that foundation from planned functionality; implementation presence does not mean a phase has passed end-to-end validation.
+This repository builds on an existing examination starter application. Authentication, dashboards, exam management, question banks, assignments, monitoring, automatic grading, supporting libraries (PDF/QR/CSV/XLSX/scratchpad/analytics/offline persistence), and report verification are implemented. The roadmap below distinguishes foundation work from remaining validation.
 
 ## Project objective
 
@@ -25,15 +25,15 @@ Build a secure, reliable, accessible platform for institutions and competition o
 - Controlled result publication and performance analytics
 - Recovery from network interruptions without granting additional examination time
 
-Manual grading, controlled result publication, and failure-resilient answer synchronization are planned work, not completed features.
+Manual grading and a separate examiner “publish results to candidates” gate remain planned refinements. Offline answer sync, verifiable PDF reports, bulk import/export, analytics charts, and the digital scratchpad are implemented.
 
 ## Roles
 
 | Role | Stored role | Responsibilities |
 | --- | --- | --- |
-| Administrator | `admin` | Manage users, platform access, exams, question banks, and results |
-| Examiner | `examiner` | Create and manage own exams, assign candidates and proctors, and review results |
-| Candidate | `student` | Access assigned exams, complete attempts, and view available results |
+| Administrator | `admin` | Manage users, platform access, exams, question banks, imports/exports, reports, and results |
+| Examiner | `examiner` | Create and manage own exams, assign candidates and proctors, import bank questions, and review results |
+| Candidate | `student` | Access assigned exams, complete attempts (with scratchpad + offline answer persistence), and view available results |
 | Proctor | `proctor` | Monitor assigned examinations and candidate progress |
 
 The existing Proctor role is retained. Candidate is the product term for the existing `student` role; routes and database values have not been renamed.
@@ -42,32 +42,39 @@ The existing Proctor role is retained. Candidate is the product term for the exi
 
 | Layer | Current implementation |
 | --- | --- |
-| Framework | Next.js 16.2, App Router, Turbopack |
+| Framework | Next.js 16.2+, App Router, Turbopack, Cache Components |
 | Frontend | React 19.2 with React Compiler |
 | Language | TypeScript with typed routes |
-| Styling | Tailwind CSS 4, CSS-based theme configuration |
-| UI | shadcn/ui with Base UI primitives |
+| Styling | Tailwind CSS 4, CSS-based theme configuration (`globals.css`) |
+| UI | shadcn/ui (`base-luma`) with Base UI primitives |
 | Authentication | Better Auth with database-backed sessions and cookies |
 | Password hashing | Argon2id through `@node-rs/argon2` |
 | Validation | Zod and `@t3-oss/env-nextjs` |
 | Forms | React Hook Form |
-| ORM | Prisma 7 |
-| Database | PostgreSQL (Supabase) through `@prisma/adapter-pg` and `pg` |
-| Icons / dates | Lucide React / date-fns |
-| Themes / notifications | next-themes / React Toastify |
+| ORM | Prisma 7 (`@prisma/adapter-pg` + `pg`) |
+| Database | PostgreSQL (Supabase) |
+| Dates | date-fns (UTC storage; display helpers in `src/lib/date/`) |
+| PDF reports | `@react-pdf/renderer` |
+| Report QR codes | `qrcode` (URL-only payloads) |
+| CSV / Excel | `papaparse` / `xlsx` |
+| Charts | `recharts` |
+| Scratchpad | HTML Canvas + `perfect-freehand` |
+| Offline persistence | IndexedDB via `idb` |
+| PDF text preview | `pdfjs-dist` (examiner-only; not required for core exams) |
+| Icons / themes / toasts | Lucide React / next-themes / Sonner |
 | Image processing | Sharp |
 | Package manager | npm; lockfile committed |
 
-Use the compatible versions in [package.json](./package.json) and [package-lock.json](./package-lock.json). Custom JWT authentication with `jose` is not the current architecture: retain Better Auth as the single authentication system. Recharts is not installed; charting is a future choice if analytics requires it.
+Use the compatible versions in [package.json](./package.json) and [package-lock.json](./package-lock.json). Custom JWT authentication with `jose` is not the current architecture: retain Better Auth as the single authentication system.
 
 ## Architecture
 
 ```text
-Browser: React UI and interactive client components
+Browser: React UI, ExamPlayer, scratchpad, IndexedDB offline queue
                          |
 Next.js: Server Components, Server Actions, Route Handlers
                          |
-          Session checks, authorization, validation
+    Session checks, RBAC, Zod validation, exam lifecycle
                          |
                   Prisma + pg adapter
                          |
@@ -76,19 +83,26 @@ Next.js: Server Components, Server Actions, Route Handlers
 
 - One Next.js application, one database, and one authentication system.
 - Server Components by default; Client Components for interactivity and browser APIs.
-- Reusable UI components and shared server-side business logic.
-- Route Handlers for HTTP endpoints and Server Actions for appropriate mutations.
-- Server-side authorization and input validation for sensitive operations.
+- Feature modules live under `src/features/` (reports, verification, imports/exports, analytics, scratchpad, exam-workspace offline, documents).
+- Server-side authorization and input validation for every sensitive operation.
 - Private pages check sessions/roles directly or through authorized data functions; layout redirects alone are insufficient.
+- Public report verification is at `/verify/[reportId]` and never exposes candidate PII or answers.
 - No microservices or direct browser-to-database access.
 
 ### Database configuration
 
 The schema uses the PostgreSQL provider. The shared connection is in [dbClient.ts](./src/lib/database/dbClient.ts), and migration configuration is in [prisma.config.ts](./prisma.config.ts). Set `DATABASE_URL` to your Supabase PostgreSQL connection string, with `sslmode=require&uselibpqcompat=true`. URL-encode special characters in credentials (for example, `@` as `%40`).
 
-Current validation accepts `postgresql://` or `postgres://`; local SQLite URLs are no longer supported. PostgreSQL migrations are under `prisma/migrations/`, with previous SQLite migration history retained in `prisma/migrations_sqlite_archive/`. Existing SQLite data is not automatically transferred by this change. Better Auth stores users, sessions, and accounts in the same PostgreSQL database.
+Current validation accepts `postgresql://` or `postgres://`; local SQLite URLs are not supported. Active PostgreSQL migrations are under `prisma/migrations/`. Previous SQLite migration history is retained in `prisma/migrations_sqlite_archive/`. Existing SQLite data is not automatically transferred. Better Auth stores users, sessions, and accounts in the same PostgreSQL database.
 
-Keep database files, credentials, dependencies, and generated output out of Git. Commit schema migrations and the npm lockfile.
+Supporting-library tables:
+
+| Model | Table | Purpose |
+| --- | --- | --- |
+| `ReportVerification` | `report_verification` | Published report id, SHA-256 content hash, public meta, revoke timestamp |
+| `ImportJob` | `import_job` | Audit trail for CSV/XLSX imports and result exports |
+
+Keep database credentials, dependencies, and generated output out of Git. Commit schema migrations and the npm lockfile.
 
 ## Local setup
 
@@ -97,8 +111,7 @@ Keep database files, credentials, dependencies, and generated output out of Git.
 - Node.js 24 or later
 - npm 11 or later
 - Git
-
-A Supabase PostgreSQL project and a valid database connection string are required for the current configuration.
+- A Supabase PostgreSQL project and a valid `DATABASE_URL`
 
 ### 1. Install dependencies
 
@@ -131,6 +144,8 @@ openssl rand -base64 32
 
 Replace the placeholder before running the application. Keep the secret stable: the current password hashing implementation also uses it as an Argon2 secret, so changing it affects verification of existing passwords. Never commit `.env`.
 
+`BETTER_AUTH_URL` is also used when building public verification URLs for QR codes (`/verify/[reportId]`). Use the real public origin in deployed environments.
+
 ### 3. Initialize and seed the database
 
 ```bash
@@ -140,6 +155,12 @@ npm run seed
 ```
 
 The commands above apply committed PostgreSQL migrations and generate the Prisma client. For development schema changes, `npm run migrate` runs `prisma migrate dev` and generates the client; it may prompt for a migration name. Use a development database for schema development, and use migrations instead of `prisma db push`.
+
+Optional remote connectivity check (reads schema + counts; creates and deletes a temporary `import_job` row):
+
+```bash
+npx tsx scripts/check-remote-db.ts
+```
 
 The seed creates four demo users and a Programming question-bank hierarchy with ten questions. It does not provide a complete assigned-exam demonstration scenario.
 
@@ -186,6 +207,30 @@ npm run build
 
 Successful checks do not replace role-based, timing, concurrency, or network-interruption testing.
 
+## Supporting libraries (Phase 10)
+
+Implemented under `src/features/` and wired into admin/student flows:
+
+| Feature | Libraries | Where |
+| --- | --- | --- |
+| PDF candidate reports | `@react-pdf/renderer` | Admin result detail → publish report |
+| QR verification | `qrcode` + SHA-256 (`node:crypto`) | `/verify/[reportId]`; QR encodes URL only |
+| CSV / Excel import | `papaparse` / `xlsx` | Admin users (candidates), admin questions (bank) |
+| CSV / Excel export | same | Admin exam results; candidate/bank exports |
+| Analytics charts | `recharts` | Admin exam results page |
+| Digital scratchpad | `perfect-freehand` + Canvas | Student `ExamPlayer` |
+| Offline answers | `idb` | Student `ExamPlayer` + sync banner |
+| PDF text preview | `pdfjs-dist` | Admin questions (examiner prep only) |
+| Date helpers | `date-fns` | `src/lib/date/` |
+
+Security notes:
+
+- Report hashes are computed on the server; clients never supply a trusted hash.
+- Import commits re-validate rows with Zod; candidate passwords are required (min 8).
+- Spreadsheets are parsed with formulas disabled; exports sanitize formula-injection prefixes.
+- Offline IndexedDB never stores passwords, tokens, or answer keys; the server remains authoritative for deadlines and ownership.
+- Scratchpad strokes are local only and do not affect answers or the exam timer.
+
 ## Development roadmap
 
 Work through phases in order, reusing existing implementations and validating each phase before treating it as complete.
@@ -204,14 +249,7 @@ Work through phases in order, reusing existing implementations and validating ea
 
 **Implement or refine:** Responsive application layout, role-specific navigation, accessible sidebar and mobile drawer, accurate header titles, profile/settings/sign-out menu, reusable dashboard components, and loading/empty/error states.
 
-| Dashboard | UI priority |
-| --- | --- |
-| Administrator | Platform metrics, user distribution, exam overview, recent activity |
-| Examiner | Own exams, preparation actions, draft/published overview, question-bank shortcuts |
-| Proctor | Assigned exams, candidate progress, direct monitoring access |
-| Candidate | Resume or available-exam action, upcoming exams, recent results |
-
-**Deliverable:** Distinct, working dashboards with a consistent visual system across mobile, tablet, and desktop. Display real available data and preserve existing authorization boundaries.
+**Deliverable:** Distinct, working dashboards with a consistent visual system across mobile, tablet, and desktop.
 
 ### Phase 03 — Examination Management
 
@@ -221,68 +259,66 @@ Work through phases in order, reusing existing implementations and validating ea
 
 ### Phase 04 — Question Bank
 
-**Done:** Difficulty, marking schemes, multi-select set grading, shuffle flags, random bank import, and `AttemptQuestion` snapshots for serving/grading active attempts.
+**Done:** Difficulty, marking schemes, multi-select set grading, shuffle flags, random bank import, and `AttemptQuestion` snapshots for serving/grading active attempts. Subject → Topic → BankQuestion hierarchy with role-scoped UI.
 
 **Deliverable:** Reusable question bank and reliable exam question management.
 
 ### Phase 05 — Candidate Management
 
-**Existing:** User administration, exam assignments, student exam listings, and assignment/time-window checks.
+**Existing:** User administration, exam assignments, student exam listings, assignment/time-window checks, and bulk candidate CSV/XLSX import (admin).
 
-**Implement or validate:** Candidate registration and management, enrollment, eligibility, and available/upcoming/completed exam views.
+**Implement or validate:** Enrollment edge cases and available/upcoming/completed exam views under competition scenarios.
 
 **Deliverable:** Complete candidate management workflow.
 
 ### Phase 06 — Examination Workspace
 
-**Existing:** Question navigation, countdown, answer saving, answered indicators, submission confirmation, and client-triggered submission at timer expiry.
+**Existing:** Question navigation, countdown, answer saving, answered indicators, submission confirmation, server-enforced duration/end time, mark-for-review UI, digital scratchpad, and offline answer queue.
 
-**Implement or validate:** Mark for review, clear save status, refresh recovery, consistent submission handling, and a countdown aligned with the server deadline. The server already checks duration and exam end time when saving; the client countdown still needs alignment with that effective deadline.
+**Validate:** Countdown alignment with the server effective deadline under clock skew, and expiry behavior when pending local answers remain.
 
 **Deliverable:** Functional exam-taking experience with deadlines controlled by the server independently of the candidate device clock.
 
 ### Phase 07 — Failure-Resilient Examinations
 
-**Innovation Challenge 5.3 — planned.**
+**Innovation Challenge 5.3 — implemented foundation; validate under real network loss.**
 
-Implement network connectivity detection, IndexedDB persistence, a local answer queue, automatic synchronization, retry handling, explicit conflict handling, refresh recovery, server-controlled deadlines, and clear synchronization status.
+Implemented: connectivity detection, IndexedDB answer persistence (`src/features/exam-workspace/offline/`), pending sync queue, automatic retry when online, sync status banner, refresh recovery, server-controlled deadlines via `saveAnswer`, and local cleanup after successful submit.
 
-Persist unsynchronized changes locally and distinguish saved-on-device from acknowledged-by-server answers. Define and test the policy for unsynchronized answers at expiry; a client timestamp alone must not authorize late writes or additional time.
+Still validate: concurrent tabs, long offline windows at expiry, and documented conflict policy under competition demo conditions. A client timestamp alone must not authorize late writes or additional time.
 
-**Deliverable:** Recoverable examination workflow under network interruptions without extending examination time. Current autosave alone does not meet this requirement.
+**Deliverable:** Recoverable examination workflow under network interruptions without extending examination time.
 
 ### Phase 08 — Monitoring and Announcements
 
 **Existing:** Proctor assignments, candidate progress, attempt statuses, and polling-based monitoring.
 
-**Implement or validate:** Active monitoring, incident recording, examiner announcements, and monitoring dashboards. Monitoring indicators must not be treated as conclusive proof of misconduct.
+**Implement or validate:** Incident recording, examiner announcements, and monitoring dashboards. Monitoring indicators must not be treated as conclusive proof of misconduct.
 
 **Deliverable:** Authorized examination monitoring and communication.
 
 ### Phase 09 — Grading and Results
 
-**Existing:** Automatic grading, score calculation, and role-scoped result views.
+**Existing:** Automatic grading, score calculation, role-scoped result views, PDF report publication with QR verification, analytics charts, and CSV/XLSX result export.
 
-**Implement or validate:** Explicit multiple-select marking rules, manual written-response grading, examiner review, controlled result publication, candidate access, and examination analytics.
-
-Current choice grading compares normalized answer text; short answers use keyword matching. Students can view submitted results without a separate examiner publication step. These behaviors need refinement to meet this phase.
+**Implement or validate:** Manual written-response grading and an optional examiner gate before candidates see results (students can currently view submitted results without a separate publication step).
 
 **Deliverable:** Complete evaluation and controlled results workflow.
 
 ### Phase 10 — Secondary Features
 
-Implement and integrate all eight required features:
+**Done (integrated, not placeholders):**
 
-1. Network-aware interface
+1. Network-aware exam UI / sync status
 2. PDF report generation
-3. Examination sandbox
-4. Bulk candidate/question import
-5. Question analytics
-6. Verifiable reports
-7. Customizable examination workspace
+3. Examination scratchpad / workspace customization hooks
+4. Bulk candidate and question import (CSV + XLSX)
+5. Question / exam analytics (`recharts`)
+6. Verifiable reports (SHA-256 + QR + `/verify/[reportId]`)
+7. Customizable exam player chrome (scratchpad, offline banner)
 8. Digital scratchpad
 
-**Deliverable:** Working secondary functionality, not placeholder controls. The complete feature set is not currently implemented.
+**Deliverable:** Working secondary functionality. Continue hardening under Phase 11.
 
 ### Phase 11 — Security and Testing
 
@@ -304,29 +340,32 @@ Prepare production builds, persistent database configuration, upload storage, de
 | --- | --- |
 | 01 — Authentication | Foundation implemented; validation and hardening required |
 | 02 — Dashboards | Existing UI; refinement and responsive verification pending |
-| 03 — Examination management | Partial; full lifecycle pending |
-| 04 — Question bank | Partial; difficulty/randomization and snapshot validation pending |
-| 05 — Candidate management | Foundation implemented; workflow validation pending |
-| 06 — Examination workspace | Partial; review markers and timer/save reliability work pending |
-| 07 — Failure resilience | Planned |
+| 03 — Examination management | Implemented lifecycle (`draft` / `published` / `completed` + derived `ongoing`) |
+| 04 — Question bank | Implemented hierarchy, marking schemes, snapshots, bank import |
+| 05 — Candidate management | Foundation + bulk import; workflow validation pending |
+| 06 — Examination workspace | Implemented with scratchpad and offline queue; timer skew validation pending |
+| 07 — Failure resilience | IndexedDB sync foundation implemented; field validation pending |
 | 08 — Monitoring | Partial; incidents and announcements pending |
-| 09 — Grading and results | Partial; manual grading and result publication pending |
-| 10 — Secondary features | Planned; complete set not implemented |
+| 09 — Grading and results | Auto-grade + PDF/QR reports + analytics; manual grade gate pending |
+| 10 — Secondary features | Implemented and integrated |
 | 11 — Security and testing | Safeguards exist; systematic verification pending |
 | 12 — Deployment | Scripts and seed data exist; deployment unverified |
 
-**Current focus: validate Phase 01 before advancing through the roadmap.** Existing later-phase code is a foundation to assess and improve, not evidence that those phases are complete.
+**Current focus: validate offline sync (Phase 07) and systematic security testing (Phase 11).** Existing code is a foundation to assess and improve, not automatic proof that a competition demo is ready.
 
 ## Project structure
 
 ```text
 prisma/
-  schema.prisma             Database models
-  migrations/               Versioned SQL migrations
+  schema.prisma             Database models (incl. ReportVerification, ImportJob)
+  migrations/               Versioned PostgreSQL migrations
   seed.ts                   Demo users and question bank
+scripts/
+  check-remote-db.ts        Optional Supabase connectivity / schema smoke check
 src/
   app/
     api/auth/[...all]/       Better Auth HTTP handler
+    verify/[reportId]/       Public report verification page
     (public)/               Login, registration, password reset pages
     (private)/
       admin/                Administration dashboard and workflows
@@ -336,16 +375,31 @@ src/
       settings/             Shared authenticated account settings
   components/               Shared and role-specific UI
     shadcnui/               Base UI-backed primitives
+  features/
+    analytics/              Recharts exam analytics
+    documents/              PDF text preview (pdfjs)
+    exam-workspace/offline/ IndexedDB answers + sync
+    exports/                CSV/XLSX export builders
+    imports/                CSV/XLSX import parse + UI
+    reports/                PDF templates and publish UI
+    scratchpad/             Digital scratchpad
+    verification/           Hash + QR helpers
   hooks/                    React hooks
   lib/
     auth.ts                 Better Auth server configuration
     auth-client.ts          Authentication client
     auth/permissions.ts     Role permission definitions
     database/dbClient.ts    Shared Prisma client
+    date/                   Display and exam-time helpers
     env/                    Environment validation
+    exam/                   Lifecycle, grading, marking schemes
     zodSchema.ts            Form/input schemas
   server/                   Business operations and Server Actions
     session.ts              Shared page-level session and role checks
+    reportActions.ts        Publish PDF/QR reports (admin/examiner)
+    verifyReport.ts         Server-only public verification (not a client action)
+    importExportActions.ts  Authorized import/export
+    analyticsActions.ts     Authorized analytics payloads
 generated/prisma/           Generated client; excluded from Git
 ```
 
@@ -362,6 +416,7 @@ generated/prisma/           Generated client; excluded from Git
 9. Use migrations for schema changes and the shared Prisma singleton for application queries.
 10. Run lint, typecheck, and build after significant changes; add meaningful workflow/security tests.
 11. Demonstrate with fictional data and follow the competition submission deadline.
+12. Do not change the database provider away from Supabase PostgreSQL without explicit approval.
 
 ### Existing question-storage conventions
 
@@ -377,9 +432,9 @@ See [schema.prisma](./prisma/schema.prisma), [lifecycle.ts](./src/lib/exam/lifec
 
 ## Demonstration preparation
 
-After seeding, use the Administrator or Examiner account to create an exam, import bank questions, assign the Candidate and Proctor, configure an available time window, and publish it. Sign in as the Candidate to complete an attempt and as the Proctor to inspect progress. Review the resulting scores with the appropriate role.
+After seeding, use the Administrator or Examiner account to create an exam, import bank questions, assign the Candidate and Proctor, configure an available time window, and publish it. Sign in as the Candidate to complete an attempt (optionally toggle offline to exercise IndexedDB sync) and as the Proctor to inspect progress. From Admin results, export CSV/XLSX, review analytics, and publish a verifiable PDF report; open the QR URL on `/verify/[reportId]`.
 
-This is a preparation checklist, not a claim of completed end-to-end testing. Extend it with offline recovery, manual grading, publication, and report verification as those phases are implemented.
+This is a preparation checklist, not a claim of completed end-to-end competition testing.
 
 ## Attribution and license
 

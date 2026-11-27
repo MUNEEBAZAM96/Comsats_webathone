@@ -5,6 +5,8 @@ import { BookOpenIcon, ChevronRightIcon, LayersIcon } from "lucide-react";
 import CreateSubjectDialog from "@/components/Bank/CreateSubjectDialog";
 import DeleteSubjectButton from "@/components/Bank/DeleteSubjectButton";
 import { Button } from "@/components/shadcnui/button";
+import { PdfTextPreview } from "@/features/documents/components/PdfTextPreview";
+import { TabularImportPanel } from "@/features/imports/components/TabularImportPanel";
 import { getSubjects } from "@/server/bankActions";
 
 export const metadata: Metadata = {
@@ -25,6 +27,14 @@ const AdminQuestionBankPage = async () => {
           </p>
         </div>
         <CreateSubjectDialog />
+      </div>
+
+      <div className="grid gap-6 lg:grid-cols-2">
+        <div className="grid gap-2">
+          <h2 className="text-lg font-medium">Bulk question import</h2>
+          <TabularImportPanel mode="bank_questions" />
+        </div>
+        <PdfTextPreview />
       </div>
 
       {subjects.length === 0 ?

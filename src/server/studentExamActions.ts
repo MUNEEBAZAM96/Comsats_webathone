@@ -302,6 +302,8 @@ export const getAttemptQuestions = async (attemptId: string) => {
   return { attempt, questions, answers };
 };
 
+const MAX_ANSWER_CHARS = 50_000;
+
 export const saveAnswer = async (
   attemptId: string,
   questionId: string,
@@ -310,6 +312,9 @@ export const saveAnswer = async (
   const session = await getStudentSession();
 
   try {
+    if (typeof text !== "string" || text.length > MAX_ANSWER_CHARS)
+      throw new Error("Answer exceeds maximum length");
+
     const attempt = await prisma.examAttempt.findUnique({
       where: { id: attemptId },
       include: {

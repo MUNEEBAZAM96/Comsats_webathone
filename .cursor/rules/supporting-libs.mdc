@@ -1,0 +1,26 @@
+---
+description: Supporting libraries — reports, CSV/XLSX, offline IDB, scratchpad, analytics
+globs: src/features/**/*.ts,src/features/**/*.tsx,src/lib/date/**/*.ts,src/server/importExportActions.ts,src/server/reportActions.ts,src/server/analyticsActions.ts
+alwaysApply: false
+---
+
+# Supporting libraries
+
+Database remains **Supabase PostgreSQL** (not SQLite). Features live under `src/features/*`.
+
+## Modules
+
+- **Date**: `src/lib/date/*` — display helpers; deadlines use server clock via exam-time helpers.
+- **Import/Export**: `papaparse` + `xlsx` via `parseTabular` + `importExportActions` (Zod row validation, preview, transactions).
+- **Reports/QR**: `@react-pdf/renderer` + `qrcode`; `ReportVerification` stores server SHA-256; public `/verify/[reportId]` shows no PII.
+- **Analytics**: `recharts` + `loadExamAnalytics` (staff-only).
+- **Scratchpad**: `perfect-freehand` + IDB; never part of answers.
+- **Offline answers**: `idb` queue + sync through `saveAnswer` (server authoritative).
+- **PDF text**: `pdfjs-dist` client preview only — no auto-publish.
+
+## Security
+
+- Never put hashes or PII in QR codes (URL only).
+- Never trust client-supplied hashes.
+- Spreadsheet formula execution disabled; size/row limits enforced.
+- Offline answers are not authoritative until server validates ownership/deadline.

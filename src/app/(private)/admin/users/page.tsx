@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import CreateUserDialog from "@/components/User/CreateUserDialog";
 import UsersTable from "@/components/User/UsersTable";
+import { TabularImportPanel } from "@/features/imports/components/TabularImportPanel";
 
 export const metadata: Metadata = {
   title: "Users",
@@ -24,6 +25,10 @@ const AdminUsersPage = async () => {
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-medium">User Management</h1>
         <CreateUserDialog />
+      </div>
+      <div className="grid gap-2">
+        <h2 className="text-lg font-medium">Bulk candidate import</h2>
+        <TabularImportPanel mode="candidates" />
       </div>
       <UsersTable
         initialUsers={
