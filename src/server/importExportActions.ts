@@ -15,6 +15,7 @@ import {
   candidateImportRowSchema,
 } from "@/features/imports/schemas/csvSchemas";
 import {
+  assertBase64Limits,
   assertFileLimits,
   MAX_BASE64_CHARS,
   parseCsvText,
@@ -44,22 +45,71 @@ const requestSchema = z.object({
   commit: z.boolean(),
 });
 
+export type TabularImportResult = {
+  validCount: number;
+  preview: Array<{ row: number; label: string }>;
+  invalid: Array<{ row: number; message: string }>;
+  duplicates: number[];
+  created: number;
+  skipped: number;
+  failed: number;
+  error?: string;
+};
+
+const emptyImportResult = (
+  patch: Partial<TabularImportResult> = {},
+): TabularImportResult => ({
+  validCount: 0,
+  preview: [],
+  invalid: [],
+  duplicates: [],
+  created: 0,
+  skipped: 0,
+  failed: patch.failed ?? 0,
+  ...patch,
+});
+
+/** Unexpected failures only — never hide row-level validation. */
+const safeImportError = (error: unknown): TabularImportResult => {
+  console.error("[tabular-import]", error);
+  return emptyImportResult({
+    failed: 1,
+    error: "The server could not process this import.",
+  });
+};
+
 const parseFile = <T>(
   input: z.infer<typeof requestSchema>,
   schema: z.ZodType<T>,
   columns: readonly string[],
 ) => {
   if (input.format === "csv") {
-    const text =
-      input.encoding === "base64"
-        ? Buffer.from(z.base64().parse(input.body), "base64").toString("utf8")
-        : input.body;
-    assertFileLimits(Buffer.byteLength(text), 0);
+    let text = input.body;
+    if (input.encoding === "base64") {
+      assertBase64Limits(input.body);
+      const decoded = z.base64().safeParse(input.body);
+      if (!decoded.success)
+        throw new Error(
+          "The CSV format is invalid. Check quoted values and commas.",
+        );
+      text = Buffer.from(decoded.data, "base64").toString("utf8");
+    }
+    assertFileLimits(Buffer.byteLength(text, "utf8"), 0);
     return parseCsvText(text, schema, columns);
   }
-  const buffer = Buffer.from(z.base64().parse(input.body), "base64");
+  assertBase64Limits(input.body);
+  const decoded = z.base64().safeParse(input.body);
+  if (!decoded.success) throw new Error("The file exceeds the 2 MB limit.");
+  const buffer = Buffer.from(decoded.data, "base64");
   assertFileLimits(buffer.byteLength, 0);
-  return parseXlsxBuffer(Uint8Array.from(buffer).buffer, schema, columns);
+  return parseXlsxBuffer(
+    buffer.buffer.slice(
+      buffer.byteOffset,
+      buffer.byteOffset + buffer.byteLength,
+    ),
+    schema,
+    columns,
+  );
 };
 
 const inspectRows = <T>(
@@ -115,11 +165,32 @@ const questionKey = (row: {
   answer: string | null;
 }) => JSON.stringify([row.topicId, row.text, row.type, row.answer ?? ""]);
 
-export const runTabularImport = async (raw: unknown) => {
-  const session = await requireAdminOrExaminer();
-  const input = requestSchema.parse(raw);
-  if (input.mode === "candidates" && session.user.role !== "admin")
-    throw new Error("Only admins can import candidates");
+export const runTabularImport = async (
+  raw: unknown,
+): Promise<TabularImportResult> => {
+  let session: Awaited<ReturnType<typeof requireAdminOrExaminer>>;
+  try {
+    session = await requireAdminOrExaminer();
+  } catch (error) {
+    // Auth redirects / role failures should stay as redirects; only wrap unknowns.
+    if (error && typeof error === "object" && "digest" in error) throw error;
+    throw error;
+  }
+
+  const parsedRequest = requestSchema.safeParse(raw);
+  if (!parsedRequest.success) {
+    return emptyImportResult({
+      failed: 1,
+      error: "The upload request is too large. Keep the file under 2 MB.",
+    });
+  }
+  const input = parsedRequest.data;
+  if (input.mode === "candidates" && session.user.role !== "admin") {
+    return emptyImportResult({
+      failed: 1,
+      error: "Only admins can import candidates",
+    });
+  }
   let rowCount = 0;
   try {
     if (input.mode === "candidates") {
@@ -129,8 +200,12 @@ export const runTabularImport = async (raw: unknown) => {
         CANDIDATE_CSV_HEADERS,
       );
       rowCount = parsed.rawCount;
-      if (rowCount > 100)
-        throw new Error("Candidate imports support up to 100 rows per file");
+      if (rowCount > 100) {
+        return emptyImportResult({
+          failed: 1,
+          error: "Candidate imports support up to 100 rows per file",
+        });
+      }
       const existing = await prisma.user.findMany({
         where: { email: { in: parsed.valid.map((row) => row.email) } },
         select: { email: true },
@@ -140,12 +215,10 @@ export const runTabularImport = async (raw: unknown) => {
         (row) => row.email,
         new Set(existing.map((row) => row.email)),
       );
-      const preview = accepted
-        .slice(0, 10)
-        .map((row, index) => ({
-          row: acceptedNumbers[index]!,
-          label: `${row.name} (${row.email})`,
-        }));
+      const preview = accepted.slice(0, 10).map((row, index) => ({
+        row: acceptedNumbers[index]!,
+        label: `${row.name} (${row.email})`,
+      }));
       if (!input.commit)
         return {
           validCount: accepted.length,
@@ -260,7 +333,7 @@ export const runTabularImport = async (raw: unknown) => {
     const topicIds = [...new Set(normalized.valid.map((row) => row.topicId))];
     const run = async (
       db: Pick<typeof prisma, "topic" | "bankQuestion" | "importJob">,
-    ) => {
+    ): Promise<TabularImportResult> => {
       const [topics, existing] = await Promise.all([
         db.topic.findMany({
           where: { id: { in: topicIds } },
@@ -270,9 +343,9 @@ export const runTabularImport = async (raw: unknown) => {
           where: {
             topicId: { in: topicIds },
             text: { in: [...new Set(normalized.valid.map((row) => row.text))] },
-            ...(session.user.role === "examiner"
-              ? { createdById: session.user.id }
-              : {}),
+            ...(session.user.role === "examiner" ?
+              { createdById: session.user.id }
+            : {}),
           },
           select: { topicId: true, text: true, type: true, answer: true },
         }),
@@ -285,14 +358,13 @@ export const runTabularImport = async (raw: unknown) => {
         (row) =>
           known.has(row.topicId) ? undefined : "topicId: Topic does not exist",
       );
-      const preview = input.commit
-        ? []
-        : accepted
-            .slice(0, 10)
-            .map((row, index) => ({
-              row: acceptedNumbers[index]!,
-              label: row.text,
-            }));
+      const preview =
+        input.commit ? [] : (
+          accepted.slice(0, 10).map((row, index) => ({
+            row: acceptedNumbers[index]!,
+            label: row.text,
+          }))
+        );
       let created = 0;
       if (input.commit) {
         if (!invalid.length) {
@@ -357,15 +429,35 @@ export const runTabularImport = async (raw: unknown) => {
     revalidatePath("/examiner/questions", "layout");
     return result;
   } catch (error) {
+    const message = error instanceof Error ? error.message : "";
+    const expected =
+      message.includes("2 MB") ||
+      message.includes("Missing required column") ||
+      message.includes("Duplicate column") ||
+      message.includes("CSV format is invalid") ||
+      message.includes("Empty file") ||
+      message.includes("Empty worksheet") ||
+      message.includes("Malformed") ||
+      message.includes("Too many rows") ||
+      message.includes("Worksheet") ||
+      message.includes("exceeds 64 columns");
+
     if (input.commit)
       await recordFailure(
         input.mode,
         input.fileName,
         session.user.id,
         rowCount,
-        rowCount,
+        Math.max(rowCount, 1),
       ).catch(() => undefined);
-    throw error;
+
+    if (expected) {
+      return emptyImportResult({
+        failed: 1,
+        error: message || "The server could not process this import.",
+      });
+    }
+    return safeImportError(error);
   }
 };
 

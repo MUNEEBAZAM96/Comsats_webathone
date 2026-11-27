@@ -17,8 +17,10 @@ const nextConfig: NextConfig = {
     ],
   },
   experimental: {
+    // Importers send Base64 (~4/3 of source bytes) plus the Server Action
+    // envelope. Keep this above the encoded size of the app's 2 MB file cap.
     serverActions: {
-      bodySizeLimit: "3mb",
+      bodySizeLimit: "5mb",
     },
   },
 };

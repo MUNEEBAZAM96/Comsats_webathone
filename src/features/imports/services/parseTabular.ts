@@ -18,14 +18,18 @@ export const MAX_BYTES = 2 * 1024 * 1024;
 export const MAX_BASE64_CHARS = Math.ceil(MAX_BYTES * 1.4) + 64;
 
 export const assertFileLimits = (bytes: number, rowCount: number) => {
-  if (bytes > MAX_BYTES) throw new Error("File exceeds 2MB limit");
+  if (bytes > MAX_BYTES) throw new Error("The file exceeds the 2 MB limit.");
   if (rowCount > MAX_ROWS) throw new Error(`Too many rows (max ${MAX_ROWS})`);
 };
 
 export const assertBase64Limits = (base64: string) => {
   if (base64.length > MAX_BASE64_CHARS)
-    throw new Error("File exceeds 2MB limit");
+    throw new Error("The file exceeds the 2 MB limit.");
 };
+
+/** Strip a UTF-8 BOM so the first header is recognized. */
+export const stripUtf8Bom = (text: string) =>
+  text.charCodeAt(0) === 0xfeff ? text.slice(1) : text;
 
 /** Neutralize CSV/Excel formula injection on exported cell values. */
 export const sanitizeExportCell = (
@@ -42,9 +46,10 @@ export const parseCsvText = <T>(
   schema: ZodType<T>,
   requiredHeaders: readonly string[],
 ): ParseResult<T> => {
-  if (!text.trim()) throw new Error("Empty file");
+  const source = stripUtf8Bom(text);
+  if (!source.trim()) throw new Error("Empty file");
 
-  const parsed = Papa.parse<Record<string, string>>(text, {
+  const parsed = Papa.parse<Record<string, string>>(source, {
     header: true,
     skipEmptyLines: "greedy",
     transformHeader: (h) => h.trim().toLowerCase(),
@@ -54,9 +59,8 @@ export const parseCsvText = <T>(
     (error) => error.type !== "FieldMismatch" || error.row === undefined,
   );
   if (fileError) {
-    const first = fileError;
     throw new Error(
-      first?.message ?? "Malformed CSV — check quoting and headers",
+      "The CSV format is invalid. Check quoted values and commas.",
     );
   }
 
@@ -68,7 +72,10 @@ export const parseCsvText = <T>(
       throw new Error(`Missing required column: ${h}`);
   }
 
-  assertFileLimits(new TextEncoder().encode(text).length, parsed.data.length);
+  assertFileLimits(
+    new TextEncoder().encode(source).length,
+    parsed.data.length,
+  );
 
   const valid: T[] = [];
   const invalid: RowIssue[] = [];
