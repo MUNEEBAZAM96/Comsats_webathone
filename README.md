@@ -53,7 +53,7 @@ The existing Proctor role is retained. Candidate is the product term for the exi
 | Forms | React Hook Form |
 | ORM | Prisma 7 (`@prisma/adapter-pg` + `pg`) |
 | Database | PostgreSQL (Supabase) |
-| Dates | date-fns (UTC storage; display helpers in `src/lib/date/`) |
+| Dates | date-fns (**UTC storage**; display helpers in `src/lib/date/`). Exam open/close eligibility uses **server time only** — never the browser clock. |
 | PDF reports | `@react-pdf/renderer` |
 | Report QR codes | `qrcode` (URL-only payloads) |
 | CSV / Excel | `papaparse` / `xlsx` |

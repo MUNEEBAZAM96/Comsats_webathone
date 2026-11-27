@@ -1,4 +1,4 @@
-import { isAfter } from "date-fns";
+import { format, isAfter } from "date-fns";
 import { getEffectiveAttemptDeadline } from "@/lib/date/exam-time";
 import {
   getEffectiveExamStatus,
@@ -150,7 +150,9 @@ export const getStartBlockReason = (
     case "available":
       return null;
     case "scheduled":
-      return "This exam has not started yet";
+      return exam.startTime
+        ? `This exam will be available on ${format(exam.startTime, "MMM d, yyyy 'at' h:mm a")}`
+        : "This exam has not started yet";
     case "missed":
       return "This exam has ended";
     case "no_questions":

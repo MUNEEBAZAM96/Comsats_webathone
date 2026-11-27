@@ -2,6 +2,7 @@ import "dotenv/config";
 import { hashPasswordFunction } from "../src/lib/argon2";
 import prisma from "../src/lib/database/dbClient";
 import { serverEnv } from "../src/lib/env/serverEnv";
+import { EXTRA_BANK_QUESTIONS } from "./seedBank";
 
 type SeedQuestion = {
   text: string;
@@ -64,12 +65,76 @@ const main = async () => {
 
   const programming = await ensureSubject("Programming", "Software development and computer science topics");
   const javascript = await ensureTopic(programming.id, "JavaScript", "Language fundamentals and runtimes");
-  const web = await ensureTopic(programming.id, "Web & APIs", "HTTP, REST and web concepts");
+  const typescript = await ensureTopic(programming.id, "TypeScript", "Static typing for JavaScript");
+  const reactTopic = await ensureTopic(programming.id, "React", "Components, hooks and UI state");
+  const nextTopic = await ensureTopic(programming.id, "Next.js", "App Router and full-stack React");
+  const algorithms = await ensureTopic(programming.id, "Algorithms", "Sorting, searching and complexity");
+  const oop = await ensureTopic(programming.id, "Object-Oriented Programming", "Classes, encapsulation and polymorphism");
+  const webLegacy = await ensureTopic(programming.id, "Web & APIs", "HTTP, REST and web concepts");
   const fundamentals = await ensureTopic(programming.id, "CS Fundamentals", "Algorithms, OOP and tooling");
-  const security = await ensureSubject("Cybersecurity", "Secure systems, identity and application security");
-  const appSecurity = await ensureTopic(security.id, "Application Security", "Common web vulnerabilities and defenses");
+
+  const webDev = await ensureSubject("Web Development", "Front-end and web platform fundamentals");
+  const htmlCss = await ensureTopic(webDev.id, "HTML and CSS", "Markup, layout and styling");
+  const httpRest = await ensureTopic(webDev.id, "HTTP and REST APIs", "Methods, status codes and resources");
+  const a11y = await ensureTopic(webDev.id, "Accessibility", "Inclusive interfaces");
+  const webPerf = await ensureTopic(webDev.id, "Web Performance", "Loading and runtime performance");
+
   const databases = await ensureSubject("Databases", "Relational data modeling and SQL");
   const sql = await ensureTopic(databases.id, "SQL Fundamentals", "Queries, constraints and transactions");
+  const dbDesign = await ensureTopic(databases.id, "Database Design", "Normalization and modeling");
+  const transactions = await ensureTopic(databases.id, "Transactions", "ACID and concurrency");
+  const indexing = await ensureTopic(databases.id, "Indexing", "Lookup performance");
+
+  const security = await ensureSubject("Cybersecurity", "Secure systems, identity and application security");
+  const appSecurity = await ensureTopic(security.id, "Application Security", "Common web vulnerabilities and defenses");
+  const authz = await ensureTopic(security.id, "Authentication and Authorization", "Identity and access control");
+  const netSec = await ensureTopic(security.id, "Network Security", "TLS and perimeter defenses");
+  const secureCoding = await ensureTopic(security.id, "Secure Coding", "Safe implementation practices");
+
+  const softEng = await ensureSubject("Software Engineering", "Process, collaboration and design");
+  const gitCollab = await ensureTopic(softEng.id, "Git and Collaboration", "Version control workflows");
+  const testing = await ensureTopic(softEng.id, "Testing", "Unit and integration testing");
+  const sysDesign = await ensureTopic(softEng.id, "System Design", "Scalable architectures");
+  const agile = await ensureTopic(softEng.id, "Agile Development", "Iterative delivery");
+
+  const csFund = await ensureSubject("Computer Science Fundamentals", "Core computing concepts");
+  const dataStructures = await ensureTopic(csFund.id, "Data Structures", "Lists, trees and hashes");
+  const osTopic = await ensureTopic(csFund.id, "Operating Systems", "Processes and memory");
+  const networks = await ensureTopic(csFund.id, "Computer Networks", "Internet protocols");
+  const arch = await ensureTopic(csFund.id, "Computer Architecture", "CPU and memory hierarchy");
+
+  const topicIdByKey = new Map<string, string>([
+    ["JavaScript", javascript.id],
+    ["TypeScript", typescript.id],
+    ["React", reactTopic.id],
+    ["Next.js", nextTopic.id],
+    ["Algorithms", algorithms.id],
+    ["Object-Oriented Programming", oop.id],
+    ["Web & APIs", webLegacy.id],
+    ["CS Fundamentals", fundamentals.id],
+    ["HTML and CSS", htmlCss.id],
+    ["HTTP and REST APIs", httpRest.id],
+    ["Accessibility", a11y.id],
+    ["Web Performance", webPerf.id],
+    ["SQL Fundamentals", sql.id],
+    ["Database Design", dbDesign.id],
+    ["Transactions", transactions.id],
+    ["Indexing", indexing.id],
+    ["Application Security", appSecurity.id],
+    ["Authentication and Authorization", authz.id],
+    ["Network Security", netSec.id],
+    ["Secure Coding", secureCoding.id],
+    ["Git and Collaboration", gitCollab.id],
+    ["Testing", testing.id],
+    ["System Design", sysDesign.id],
+    ["Agile Development", agile.id],
+    ["Data Structures", dataStructures.id],
+    ["Operating Systems", osTopic.id],
+    ["Computer Networks", networks.id],
+    ["Computer Architecture", arch.id],
+  ]);
+
+  const web = webLegacy;
 
   const questions: SeedQuestion[] = [
     { text: "Which of the following are primitive data types in JavaScript?", type: "multiple_choice", options: "String\nNumber\nObject\nBoolean\nArray", answer: "String\nNumber\nBoolean", points: 2, difficulty: "medium", topicId: javascript.id, markingScheme: scheme({ version: 1, mode: "all_of", correctOptions: ["String", "Number", "Boolean"], partialCredit: true }) },
@@ -106,15 +171,60 @@ const main = async () => {
       topicId: appSecurity.id,
       markingScheme: scheme({ version: 1, mode: "manual" }),
     },
+    ...EXTRA_BANK_QUESTIONS.map((q) => {
+      const topicId = topicIdByKey.get(q.topicKey);
+      if (!topicId) throw new Error(`Missing topic for seed key ${q.topicKey}`);
+      return {
+        text: q.text,
+        type: q.type,
+        options: q.options,
+        answer: q.answer,
+        points: q.points,
+        difficulty: q.difficulty,
+        topicId,
+        markingScheme: q.markingScheme,
+      } satisfies SeedQuestion;
+    }),
   ];
 
-  const topicById = new Map([
-    [javascript.id, { topicName: "JavaScript", subjectName: "Programming" }],
-    [web.id, { topicName: "Web & APIs", subjectName: "Programming" }],
-    [fundamentals.id, { topicName: "CS Fundamentals", subjectName: "Programming" }],
-    [appSecurity.id, { topicName: "Application Security", subjectName: "Cybersecurity" }],
-    [sql.id, { topicName: "SQL Fundamentals", subjectName: "Databases" }],
-  ]);
+  const topicById = new Map(
+    [...topicIdByKey.entries()].map(([topicName, topicId]) => {
+      const subjectName =
+        (
+          [
+            ["JavaScript", "Programming"],
+            ["TypeScript", "Programming"],
+            ["React", "Programming"],
+            ["Next.js", "Programming"],
+            ["Algorithms", "Programming"],
+            ["Object-Oriented Programming", "Programming"],
+            ["Web & APIs", "Programming"],
+            ["CS Fundamentals", "Programming"],
+            ["HTML and CSS", "Web Development"],
+            ["HTTP and REST APIs", "Web Development"],
+            ["Accessibility", "Web Development"],
+            ["Web Performance", "Web Development"],
+            ["SQL Fundamentals", "Databases"],
+            ["Database Design", "Databases"],
+            ["Transactions", "Databases"],
+            ["Indexing", "Databases"],
+            ["Application Security", "Cybersecurity"],
+            ["Authentication and Authorization", "Cybersecurity"],
+            ["Network Security", "Cybersecurity"],
+            ["Secure Coding", "Cybersecurity"],
+            ["Git and Collaboration", "Software Engineering"],
+            ["Testing", "Software Engineering"],
+            ["System Design", "Software Engineering"],
+            ["Agile Development", "Software Engineering"],
+            ["Data Structures", "Computer Science Fundamentals"],
+            ["Operating Systems", "Computer Science Fundamentals"],
+            ["Computer Networks", "Computer Science Fundamentals"],
+            ["Computer Architecture", "Computer Science Fundamentals"],
+          ] as const
+        ).find(([name]) => name === topicName)?.[1] ?? "Programming";
+      return [topicId, { topicName, subjectName }] as const;
+    }),
+  );
 
   const bankQuestions: Array<{
     id: string;

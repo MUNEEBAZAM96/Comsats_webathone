@@ -26,7 +26,10 @@ const cases: [string, () => void][] = [
   ["before start is upcoming/scheduled", () => {
     const e = getCandidateExamEligibility(exam({ startTime: addMinutes(now, 5) }), null, now);
     assert.deepEqual([e.bucket, e.state, e.action], ["upcoming", "scheduled", "none"]);
-    assert.equal(getStartBlockReason(exam({ startTime: addMinutes(now, 5) }), now), "This exam has not started yet");
+    assert.match(
+      getStartBlockReason(exam({ startTime: addMinutes(now, 5) }), now) ?? "",
+      /This exam will be available on/,
+    );
   }],
   ["inside window is available/start", () => {
     const e = getCandidateExamEligibility(exam(), null, now);
