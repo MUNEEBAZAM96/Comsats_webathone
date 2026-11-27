@@ -10,6 +10,7 @@ import CreateTopicDialog from "@/components/Bank/CreateTopicDialog";
 import DeleteTopicButton from "@/components/Bank/DeleteTopicButton";
 import { Button } from "@/components/shadcnui/button";
 import { getSubjectById } from "@/server/bankActions";
+import { requireRole } from "@/server/session";
 
 export const metadata: Metadata = {
   title: "Topics",
@@ -21,6 +22,7 @@ const AdminSubjectTopicsPage = async ({
 }: {
   params: Promise<{ subjectId: string }>;
 }) => {
+  await requireRole("admin");
   const { subjectId } = await params;
   const subject = await getSubjectById(subjectId);
 

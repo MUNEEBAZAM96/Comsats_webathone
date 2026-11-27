@@ -385,6 +385,9 @@ export const createBankQuestion = async (formData: FormData) => {
       answer: parsed.answer,
       markingSchemeJson: parsed.markingScheme || null,
       partialCredit: parsed.partialCredit,
+      manualGrading: parsed.manualGrading,
+      multiSelectRule: parsed.multiSelectRule || undefined,
+      wrongPenalty: parsed.wrongPenalty,
     });
 
     await prisma.bankQuestion.create({
@@ -439,6 +442,9 @@ export const updateBankQuestion = async (id: string, formData: FormData) => {
       answer: parsed.answer,
       markingSchemeJson: parsed.markingScheme || null,
       partialCredit: parsed.partialCredit,
+      manualGrading: parsed.manualGrading,
+      multiSelectRule: parsed.multiSelectRule || undefined,
+      wrongPenalty: parsed.wrongPenalty,
     });
 
     await prisma.bankQuestion.update({

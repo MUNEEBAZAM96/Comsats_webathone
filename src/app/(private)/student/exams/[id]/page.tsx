@@ -69,6 +69,7 @@ const StudentTakeExamPage = async ({
       initialRemainingMs={data.clock.remainingMs}
       questions={data.questions}
       savedAnswers={data.answers}
+      initialAnnouncements={data.announcements}
     />
   );
 };

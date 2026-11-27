@@ -7,6 +7,8 @@ import { Button } from "@/components/shadcnui/button";
 import { StatusBadge } from "@/components/Results/StatusBadge";
 import { PctBadge } from "@/components/Results/PctBadge";
 import { getAllResults } from "@/server/resultsActions";
+import { requireRole } from "@/server/session";
+import { formatScore } from "@/lib/exam/grading";
 
 export const metadata: Metadata = {
   title: "All Results",
@@ -14,6 +16,7 @@ export const metadata: Metadata = {
 };
 
 const AdminAllResultsPage = async () => {
+  await requireRole("admin");
   const results = await getAllResults();
 
   return (
@@ -42,9 +45,7 @@ const AdminAllResultsPage = async () => {
             </thead>
             <tbody>
               {results.map((r) => {
-                const score = r.totalScore ?? r.autoScore ?? 0;
-                const pct =
-                  r.maxScore > 0 ? Math.round((score / r.maxScore) * 100) : 0;
+                const pct = r.percentage;
                 return (
                   <tr
                     key={r.id}
@@ -58,9 +59,9 @@ const AdminAllResultsPage = async () => {
                     </td>
                     <td className="px-4 py-3">{r.student.name}</td>
                     <td className="px-4 py-3 font-medium tabular-nums">
-                      {score}/{r.maxScore}
+                      {r.totalScore === null ? "Pending" : `${formatScore(r.totalScore)}/${r.maxScore}`}
                     </td>
-                    <td className="px-4 py-3">{<PctBadge pct={pct} />}</td>
+                    <td className="px-4 py-3">{pct === null ? "—" : <PctBadge pct={pct} />}</td>
                     <td className="px-4 py-3">
                       {<StatusBadge status={r.status} />}
                     </td>

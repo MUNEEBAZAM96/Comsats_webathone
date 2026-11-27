@@ -97,7 +97,7 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 │   └── results/            # List + detail
 ├── proctor/                # role=proctor only
 │   ├── page.tsx            # Dashboard
-│   ├── exams/              # List + live monitor (ProctorExamMonitor, 2s polling)
+│   ├── exams/              # List + live monitor (shared MonitorPage/ExamMonitor, 5s polling)
 │   ├── settings/
 │   └── results/            # List + detail
 └── student/                # role=student only
@@ -138,6 +138,15 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 - Import is Copy/Snapshot: `importBankQuestions` creates new `Question` rows duplicating all fields. No FK link to bank originals; refreshes `totalMarks` on draft exams.
 - Admin may delete draft always; published/completed only with zero attempts. Examiners delete own drafts only (never with attempts).
 - `redirect()` in a server action called from a client component can be misinterpreted as a promise rejection by `.catch()`. Prefer client-side `router.push()` after the action resolves.
+
+# Phases 07–09 (resilience, monitoring, grading)
+
+- Offline queue, heartbeat, events and monitor rules: `.cursor/rules/offline-sync.mdc`. Grading, publication and analytics: `.cursor/rules/grading-results.mdc`.
+- Question types now include `long_answer` (always marked by hand). Attempt status: `in_progress` → `submitted` (manual marks pending, `totalScore` null) → `graded`.
+- Students see scores only after `publishResults`; `resultReveal` (`none` | `score_only` | `score_and_answers`) controls what they see.
+- New staff routes: `admin|examiner/exams/[id]/monitor`, `admin|examiner/exams/[id]/grading`; proctors monitor at `proctor/exams/[id]` (assigned exams only).
+- Shared components: `src/components/Monitoring/*` (ExamMonitor, MonitorPage, IncidentDialog, AnnouncementPanel, AttemptTimelineSheet), `src/components/Grading/*` (GradingPage, GradingWorkspace, PublishResultsControls, ResultSettingsForm, GradeHistory, AnswerOverrideDialog), `src/components/Results/ExamResultsView.tsx`, `StaffResultDetailView.tsx`.
+- Server access helpers: `src/server/examAccess.ts` (`assertCanMonitorExam`, `assertCanManageExam`, `assertPermission`).
 
 # Student exam flow
 

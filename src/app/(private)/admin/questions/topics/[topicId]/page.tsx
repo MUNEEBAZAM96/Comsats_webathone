@@ -5,6 +5,7 @@ import { ArrowLeftIcon, BookOpenIcon, PlusIcon } from "lucide-react";
 import DeleteBankQuestionButton from "@/components/Exam/DeleteBankQuestionButton";
 import { Button } from "@/components/shadcnui/button";
 import { getTopicById } from "@/server/bankActions";
+import { requireRole } from "@/server/session";
 
 export const metadata: Metadata = {
   title: "Questions",
@@ -16,6 +17,7 @@ const questionTypes: Record<string, string> = {
   single_choice: "Single Choice",
   true_false: "True / False",
   short_answer: "Short Answer",
+  long_answer: "Long Answer",
 };
 
 const AdminTopicQuestionsPage = async ({
@@ -23,6 +25,7 @@ const AdminTopicQuestionsPage = async ({
 }: {
   params: Promise<{ topicId: string }>;
 }) => {
+  await requireRole("admin");
   const { topicId } = await params;
   const topic = await getTopicById(topicId);
 

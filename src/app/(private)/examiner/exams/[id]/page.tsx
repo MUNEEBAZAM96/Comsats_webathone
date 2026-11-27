@@ -6,6 +6,7 @@ import ExamForm from "@/components/Exam/ExamForm";
 import QuestionsManager from "@/components/Exam/QuestionsManager";
 import { Button } from "@/components/shadcnui/button";
 import { getExamById, updateExam } from "@/server/examActions";
+import { requireRole } from "@/server/session";
 
 export const metadata: Metadata = {
   title: "Exam Details",
@@ -17,6 +18,7 @@ const ExaminerExamDetailPage = async ({
 }: {
   params: Promise<{ id: string }>;
 }) => {
+  await requireRole("examiner");
   const { id } = await params;
   const exam = await getExamById(id);
 
@@ -66,6 +68,8 @@ const ExaminerExamDetailPage = async ({
               endTime: formatDate(exam.endTime),
               shuffleQuestions: exam.shuffleQuestions,
               shuffleOptions: exam.shuffleOptions,
+              resultReveal: exam.resultReveal as "none" | "score_only" | "score_and_answers",
+              passMarkPercent: exam.passMarkPercent ?? undefined,
             }}
             submitLabel="Update Exam"
           />

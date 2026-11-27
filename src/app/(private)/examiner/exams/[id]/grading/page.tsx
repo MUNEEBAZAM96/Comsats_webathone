@@ -1,0 +1,21 @@
+import type { Metadata } from "next";
+import { GradingPage } from "@/components/Grading/GradingPage";
+import { requireRole } from "@/server/session";
+
+export const metadata: Metadata = {
+  title: "Grading",
+  description: "Mark written answers, review overrides and publish results",
+};
+
+const ExaminerGradingPage = async ({ params }: { params: Promise<{ id: string }> }) => {
+  await requireRole("examiner");
+  const { id } = await params;
+  return (
+    <GradingPage
+      examId={id}
+      basePath="/examiner"
+    />
+  );
+};
+
+export default ExaminerGradingPage;

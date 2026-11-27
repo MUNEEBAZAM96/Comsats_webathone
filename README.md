@@ -9,7 +9,7 @@ A full-stack examination platform being developed for **Technoverse 5.0 – Web-
 | Language / package manager | TypeScript / npm |
 | Current database | Supabase PostgreSQL through Prisma and the `pg` adapter |
 | Innovation direction | Failure-Resilient Examinations — Challenge 5.3 |
-| Current focus | Validate Phase 07 offline sync end-to-end and Phase 11 security testing |
+| Current focus | Phase 10 secondary features and Phase 11 security testing (Phases 07–09 implemented and e2e-tested) |
 
 This repository builds on an existing examination starter application. Authentication, dashboards, exam management, question banks, assignments, monitoring, automatic grading, supporting libraries (PDF/QR/CSV/XLSX/scratchpad/analytics/offline persistence), and report verification are implemented. The roadmap below distinguishes foundation work from remaining validation.
 
@@ -283,25 +283,21 @@ Work through phases in order, reusing existing implementations and validating ea
 
 **Innovation Challenge 5.3 — implemented foundation; validate under real network loss.**
 
-Implemented: connectivity detection, IndexedDB answer persistence (`src/features/exam-workspace/offline/`), pending sync queue, automatic retry when online, sync status banner, refresh recovery, server-controlled deadlines via `saveAnswer`, and local cleanup after successful submit.
+Implemented: IndexedDB-first answer storage with per-question sequence numbers and idempotency keys, a batched sync queue with jittered backoff, server-side conflict rules (higher sequence wins; stale writes return the server copy), heartbeat with server time, a countdown-only timer, single-tab guard, attempt events, and finalisation that drops writes after the server deadline. Covered by `scripts/test-sync-queue.ts` and `scripts/e2e-phase07-09.ts` (offline recovery, aborted saves, second device conflict, offline deadline, skewed clock).
 
-Still validate: concurrent tabs, long offline windows at expiry, and documented conflict policy under competition demo conditions. A client timestamp alone must not authorize late writes or additional time.
+Known limit: there is no service worker, so a page reload while fully offline cannot load; answers survive closing the tab and are recovered on the next online load.
 
 **Deliverable:** Recoverable examination workflow under network interruptions without extending examination time.
 
 ### Phase 08 — Monitoring and Announcements
 
-**Existing:** Proctor assignments, candidate progress, attempt statuses, and polling-based monitoring.
-
-**Implement or validate:** Incident recording, examiner announcements, and monitoring dashboards. Monitoring indicators must not be treated as conclusive proof of misconduct.
+**Implemented:** One monitor for admins, owning examiners and assigned proctors (5 s polling with backoff): every assigned candidate including not-started, progress, server-time connection state (online / idle / offline), signal counts with a per-attempt timeline, human-recorded incidents (only owner/admin resolve), and announcements delivered to the workspace via heartbeat with read receipts and retraction. Monitoring indicators are labelled as automated signals and are not treated as proof of misconduct.
 
 **Deliverable:** Authorized examination monitoring and communication.
 
 ### Phase 09 — Grading and Results
 
-**Existing:** Automatic grading, score calculation, role-scoped result views, PDF report publication with QR verification, analytics charts, and CSV/XLSX result export.
-
-**Implement or validate:** Manual written-response grading and an optional examiner gate before candidates see results (students can currently view submitted results without a separate publication step).
+**Implemented:** Snapshot-based auto grading (single, multi with all-or-nothing / partial / partial-with-penalty, true/false, keyword short answer), `long_answer` and manual short answers marked in a grading workspace (quarter-point steps, feedback, anonymised mode), audited overrides and regrade, and a publication gate: candidates see nothing scored until results are published, then only what `resultReveal` allows. Analytics cover participation, score statistics, pass rate, histogram, item difficulty/discrimination and option frequency. Reports and CSV/XLSX exports use the final total.
 
 **Deliverable:** Complete evaluation and controlled results workflow.
 

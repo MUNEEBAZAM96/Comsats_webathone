@@ -9,43 +9,52 @@ datasource db {
 }
 
 model User {
-  id            String    @id @default(uuid())
-  name          String
-  email         String
-  emailVerified Boolean   @default(false)
-  image         String?
-  role          String    @default("student")
-  banned        Boolean   @default(false)
-  banReason     String?
-  banExpires    DateTime?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-  sessions      Session[]
-  accounts      Account[]
-  exams                    Exam[]             @relation("CreatedExams")
-  bankQuestions            BankQuestion[]
-  examAssignments          ExamAssignment[]   @relation("AssignedExams")
-  createdAssignments       ExamAssignment[]   @relation("CreatedAssignments")
-  examProctors             ExamProctor[]      @relation("ProctorExams")
-  createdProctorAssignments ExamProctor[]      @relation("CreatedProctorAssignments")
-  examAttempts             ExamAttempt[]
-  publishedReports         ReportVerification[] @relation("PublishedReports")
+  id                        String               @id @default(uuid())
+  name                      String
+  email                     String
+  emailVerified             Boolean              @default(false)
+  image                     String?
+  role                      String               @default("student")
+  banned                    Boolean              @default(false)
+  banReason                 String?
+  banExpires                DateTime?
+  createdAt                 DateTime             @default(now())
+  updatedAt                 DateTime             @updatedAt
+  sessions                  Session[]
+  accounts                  Account[]
+  exams                     Exam[]               @relation("CreatedExams")
+  bankQuestions             BankQuestion[]
+  examAssignments           ExamAssignment[]     @relation("AssignedExams")
+  createdAssignments        ExamAssignment[]     @relation("CreatedAssignments")
+  examProctors              ExamProctor[]        @relation("ProctorExams")
+  createdProctorAssignments ExamProctor[]        @relation("CreatedProctorAssignments")
+  examAttempts              ExamAttempt[]
+  publishedReports          ReportVerification[] @relation("PublishedReports")
+  publishedResults          Exam[]               @relation("PublishedResults")
+  gradedAttempts            ExamAttempt[]        @relation("GradedAttempts")
+  gradedAnswers             Answer[]             @relation("GradedAnswers")
+  gradeAudits               GradeAudit[]         @relation("GradeAudits")
+  incidentsAsCandidate      ExamIncident[]       @relation("IncidentCandidates")
+  reportedIncidents         ExamIncident[]       @relation("ReportedIncidents")
+  resolvedIncidents         ExamIncident[]       @relation("ResolvedIncidents")
+  examAnnouncements         ExamAnnouncement[]   @relation("ExamAnnouncements")
+  announcementReads         AnnouncementRead[]   @relation("AnnouncementReads")
 
   @@unique([email])
   @@map("user")
 }
 
 model Session {
-  id              String   @id @default(uuid())
-  expiresAt       DateTime
-  token           String
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-  ipAddress       String?
-  userAgent       String?
-  impersonatedBy  String?
-  userId          String
-  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id             String   @id @default(uuid())
+  expiresAt      DateTime
+  token          String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  ipAddress      String?
+  userAgent      String?
+  impersonatedBy String?
+  userId         String
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([token])
   @@index([userId])
@@ -86,30 +95,42 @@ model Verification {
 }
 
 model Exam {
-  id           String    @id @default(uuid())
-  title        String
-  description  String?
-  instructions String?
-  duration     Int
-  startTime    DateTime?
-  endTime      DateTime?
+  id                   String    @id @default(uuid())
+  title                String
+  description          String?
+  instructions         String?
+  duration             Int
+  startTime            DateTime?
+  endTime              DateTime?
   /// Stored: draft | published | completed. Never store "ongoing".
-  status       String    @default("draft")
+  status               String    @default("draft")
   /// Snapshot of SUM(question.points); kept in sync on draft edits and publish.
-  totalMarks   Int       @default(0)
+  totalMarks           Int       @default(0)
   /// Per-attempt shuffle of question order at startExam.
-  shuffleQuestions Boolean @default(false)
+  shuffleQuestions     Boolean   @default(false)
   /// Per-attempt shuffle of choice option display order at startExam.
-  shuffleOptions   Boolean @default(false)
-  createdById  String
-  createdBy    User      @relation("CreatedExams", fields: [createdById], references: [id])
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  shuffleOptions       Boolean   @default(false)
+  /// Null = results hidden from candidates. Set by publishResults.
+  resultsPublishedAt   DateTime?
+  resultsPublishedById String?
+  resultsPublishedBy   User?     @relation("PublishedResults", fields: [resultsPublishedById], references: [id], onDelete: SetNull)
+  /// none | score_only | score_and_answers — what candidates see once published
+  resultReveal         String    @default("score_and_answers")
+  /// Optional pass threshold in percent (0-100) for analytics and badges
+  passMarkPercent      Int?
+  createdById          String
+  createdBy            User      @relation("CreatedExams", fields: [createdById], references: [id])
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
 
-  questions   Question[]
-  assignments ExamAssignment[]
-  proctors    ExamProctor[]
-  attempts    ExamAttempt[]
+  questions     Question[]
+  assignments   ExamAssignment[]
+  proctors      ExamProctor[]
+  attempts      ExamAttempt[]
+  announcements ExamAnnouncement[]
+  incidents     ExamIncident[]
+  events        AttemptEvent[]
+  gradeAudits   GradeAudit[]
 
   @@index([createdById])
   @@map("exam")
@@ -218,28 +239,46 @@ model Question {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  answers           Answer[]
-  attemptQuestions  AttemptQuestion[]
+  answers          Answer[]
+  attemptQuestions AttemptQuestion[]
 
   @@index([examId])
   @@map("question")
 }
 
 model ExamAttempt {
-  id          String    @id @default(uuid())
-  userId      String
-  examId      String
-  status      String    @default("in_progress")
-  startedAt   DateTime  @default(now())
-  submittedAt DateTime?
-  autoScore   Int?
-  totalScore  Int?
-  maxScore    Int       @default(0)
+  id           String    @id @default(uuid())
+  userId       String
+  examId       String
+  /// in_progress | submitted (awaiting manual grading) | graded
+  status       String    @default("in_progress")
+  startedAt    DateTime  @default(now())
+  submittedAt  DateTime?
+  /// Sum of auto-graded answer scores
+  autoScore    Float?
+  /// Sum of manually graded answer scores
+  manualScore  Float?
+  /// Final total; null while manual grading is pending
+  totalScore   Float?
+  maxScore     Int       @default(0)
+  gradedAt     DateTime?
+  gradedById   String?
+  gradedBy     User?     @relation("GradedAttempts", fields: [gradedById], references: [id], onDelete: SetNull)
+  /// manual | timer | resume_finalize | server_sweep
+  submitSource String?
+  /// Liveness, written with server time only
+  lastSeenAt   DateTime?
+  lastSyncAt   DateTime?
+  clientOnline Boolean   @default(true)
+  /// Client-reported unsynced answer count (informational only)
+  pendingLocal Int       @default(0)
 
   user      User              @relation(fields: [userId], references: [id], onDelete: Cascade)
   exam      Exam              @relation(fields: [examId], references: [id], onDelete: Cascade)
   answers   Answer[]
   questions AttemptQuestion[]
+  events    AttemptEvent[]
+  incidents ExamIncident[]
 
   @@unique([userId, examId])
   @@index([examId])
@@ -249,23 +288,23 @@ model ExamAttempt {
 
 /// Frozen copy of an exam Question at attempt start. Grading uses these rows only.
 model AttemptQuestion {
-  id               String   @id @default(uuid())
+  id               String      @id @default(uuid())
   attemptId        String
   attempt          ExamAttempt @relation(fields: [attemptId], references: [id], onDelete: Cascade)
   /// Exam Question.id at snapshot time (informational / dual-write Answer.questionId)
   sourceQuestionId String
-  sourceQuestion   Question @relation(fields: [sourceQuestionId], references: [id], onDelete: Restrict)
+  sourceQuestion   Question    @relation(fields: [sourceQuestionId], references: [id], onDelete: Restrict)
   text             String
   type             String
   options          String?
   answer           String?
-  points           Int      @default(1)
-  order            Int      @default(0)
-  difficulty       String   @default("medium")
+  points           Int         @default(1)
+  order            Int         @default(0)
+  difficulty       String      @default("medium")
   markingScheme    String?
   /// Display order of options when shuffleOptions is on (newline-separated texts)
   optionOrder      String?
-  createdAt        DateTime @default(now())
+  createdAt        DateTime    @default(now())
 
   answers Answer[]
 
@@ -276,16 +315,29 @@ model AttemptQuestion {
 }
 
 model Answer {
-  id                String  @id @default(uuid())
+  id                String    @id @default(uuid())
   attemptId         String
   questionId        String
   attemptQuestionId String?
   text              String?
-  score             Int?
+  /// Final score; null while manual grading is pending
+  score             Float?
+  autoScore         Float?
+  manualScore       Float?
+  feedback          String?
+  requiresManual    Boolean   @default(false)
+  gradedById        String?
+  gradedAt          DateTime?
+  /// Monotonic per (attempt, question), assigned by the client sync queue
+  clientSeq         Int       @default(0)
+  idempotencyKey    String?
+  serverUpdatedAt   DateTime  @default(now()) @updatedAt
 
   attempt         ExamAttempt      @relation(fields: [attemptId], references: [id], onDelete: Cascade)
   question        Question         @relation(fields: [questionId], references: [id], onDelete: Cascade)
   attemptQuestion AttemptQuestion? @relation(fields: [attemptQuestionId], references: [id], onDelete: SetNull)
+  gradedBy        User?            @relation("GradedAnswers", fields: [gradedById], references: [id], onDelete: SetNull)
+  audits          GradeAudit[]
 
   @@unique([attemptId, questionId])
   @@index([attemptId])
@@ -294,9 +346,109 @@ model Answer {
   @@map("answer")
 }
 
+/// Audit trail for grading and result publication.
+/// action: grade | override | regrade | publish | unpublish (answerId null for publish/unpublish)
+model GradeAudit {
+  id            String   @id @default(uuid())
+  examId        String
+  exam          Exam     @relation(fields: [examId], references: [id], onDelete: Cascade)
+  answerId      String?
+  answer        Answer?  @relation(fields: [answerId], references: [id], onDelete: Cascade)
+  action        String
+  previousScore Float?
+  newScore      Float?
+  reason        String?
+  gradedById    String
+  gradedBy      User     @relation("GradeAudits", fields: [gradedById], references: [id])
+  createdAt     DateTime @default(now())
+
+  @@index([examId, createdAt])
+  @@index([answerId])
+  @@map("grade_audit")
+}
+
+/// Automated workspace signals (server-timestamped). Context only — never proof of misconduct.
+/// type: connection_lost | connection_restored | tab_hidden | tab_visible | window_blur |
+///       multiple_tabs | sync_conflict | sync_failed | resumed_after_refresh | auto_submitted
+model AttemptEvent {
+  id        String      @id @default(uuid())
+  attemptId String
+  attempt   ExamAttempt @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  examId    String
+  exam      Exam        @relation(fields: [examId], references: [id], onDelete: Cascade)
+  type      String
+  /// Short JSON (max 500 chars). Never contains answer text.
+  detail    String?
+  createdAt DateTime    @default(now())
+
+  @@index([examId, createdAt])
+  @@index([attemptId, createdAt])
+  @@map("attempt_event")
+}
+
+/// Human-recorded incident during an exam.
+model ExamIncident {
+  id             String       @id @default(uuid())
+  examId         String
+  exam           Exam         @relation(fields: [examId], references: [id], onDelete: Cascade)
+  attemptId      String?
+  attempt        ExamAttempt? @relation(fields: [attemptId], references: [id], onDelete: SetNull)
+  candidateId    String?
+  candidate      User?        @relation("IncidentCandidates", fields: [candidateId], references: [id], onDelete: SetNull)
+  reportedById   String
+  reportedBy     User         @relation("ReportedIncidents", fields: [reportedById], references: [id])
+  /// technical | conduct | identity | environment | other
+  category       String
+  /// low | medium | high
+  severity       String       @default("low")
+  description    String
+  /// open | under_review | resolved | dismissed
+  status         String       @default("open")
+  resolutionNote String?
+  resolvedById   String?
+  resolvedBy     User?        @relation("ResolvedIncidents", fields: [resolvedById], references: [id], onDelete: SetNull)
+  resolvedAt     DateTime?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@index([examId, status])
+  @@index([attemptId])
+  @@map("exam_incident")
+}
+
+/// Message from staff to all candidates of an exam.
+model ExamAnnouncement {
+  id          String             @id @default(uuid())
+  examId      String
+  exam        Exam               @relation(fields: [examId], references: [id], onDelete: Cascade)
+  authorId    String
+  author      User               @relation("ExamAnnouncements", fields: [authorId], references: [id])
+  message     String
+  /// info | important | urgent
+  priority    String             @default("info")
+  createdAt   DateTime           @default(now())
+  retractedAt DateTime?
+  reads       AnnouncementRead[]
+
+  @@index([examId, createdAt])
+  @@map("exam_announcement")
+}
+
+model AnnouncementRead {
+  announcementId String
+  announcement   ExamAnnouncement @relation(fields: [announcementId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User             @relation("AnnouncementReads", fields: [userId], references: [id], onDelete: Cascade)
+  readAt         DateTime         @default(now())
+
+  @@id([announcementId, userId])
+  @@index([userId])
+  @@map("announcement_read")
+}
+
 /// Publicly verifiable published report metadata (no PII / answers in QR payload).
 model ReportVerification {
-  id            String   @id @default(uuid())
+  id            String    @id @default(uuid())
   /// candidate_result | exam_summary
   type          String
   examId        String?
@@ -306,8 +458,8 @@ model ReportVerification {
   /// Public-safe fields for verification page (JSON): examTitle, score, maxScore, pct, publishedAt
   publicMeta    String
   publishedById String
-  publishedBy   User     @relation("PublishedReports", fields: [publishedById], references: [id])
-  publishedAt   DateTime @default(now())
+  publishedBy   User      @relation("PublishedReports", fields: [publishedById], references: [id])
+  publishedAt   DateTime  @default(now())
   revokedAt     DateTime?
 
   @@index([examId])

@@ -9,6 +9,7 @@ import {
 } from "@/components/shadcnui/card";
 import { StudentExamCard } from "@/components/Student/StudentExamCard";
 import { groupCandidateExams } from "@/lib/exam/candidateBuckets";
+import { requireRole } from "@/server/session";
 
 export const metadata: Metadata = {
   title: "My examinations",
@@ -48,6 +49,7 @@ const ExamSection = ({
 );
 
 const StudentExamsPage = async () => {
+  await requireRole("student");
   const { exams } = await getStudentExams();
   const { available, upcoming, completed } = groupCandidateExams(exams);
 

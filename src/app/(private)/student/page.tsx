@@ -26,6 +26,7 @@ import { DashboardShellSkeleton } from "@/components/Dashboard/DashboardShellSke
 import { CandidateExamAction } from "@/components/Student/CandidateExamAction";
 import { CandidateExamStateBadge } from "@/components/Student/CandidateExamStateBadge";
 import { groupCandidateExams } from "@/lib/exam/candidateBuckets";
+import { formatScore } from "@/lib/exam/grading";
 import { formatDisplayDateTime, formatDurationMinutes } from "@/lib/date/format";
 import type { StudentExamListItem } from "@/server/studentExamActions";
 
@@ -57,9 +58,16 @@ const examTiming = (exam: StudentExamListItem) => {
 const ExamRow = ({ exam }: { exam: StudentExamListItem }) => {
   const timing = examTiming(exam);
   const score =
-    exam.attempt && exam.eligibility.action === "view_result" ?
-      `${exam.attempt.totalScore ?? exam.attempt.autoScore ?? 0}/${exam.attempt.maxScore}`
+    (
+      exam.attempt &&
+      exam.eligibility.action === "view_result" &&
+      exam.resultsVisible &&
+      exam.attempt.totalScore != null
+    ) ?
+      `${formatScore(exam.attempt.totalScore)}/${exam.attempt.maxScore}`
     : null;
+  const awaitingResults =
+    exam.attempt && exam.eligibility.action === "view_result" && !score;
 
   return (
     <div className="border-border flex flex-wrap items-center justify-between gap-4 rounded-3xl border p-4">
@@ -73,6 +81,7 @@ const ExamRow = ({ exam }: { exam: StudentExamListItem }) => {
           questions
           {timing && ` · ${timing}`}
           {score && ` · Score ${score}`}
+          {awaitingResults && " · Results not released yet"}
         </p>
       </div>
       <CandidateExamAction
@@ -125,13 +134,16 @@ const StudentDashboardContent = async () => {
   const inProgress = available.filter(
     (e) => e.eligibility.state === "in_progress",
   );
-  const finished = completed.filter(
-    (e) => e.eligibility.action === "view_result" && e.attempt,
+  const pctScores = completed.flatMap((e) =>
+    (
+      e.eligibility.action === "view_result" &&
+      e.resultsVisible &&
+      e.attempt?.totalScore != null &&
+      e.attempt.maxScore > 0
+    ) ?
+      [(e.attempt.totalScore / e.attempt.maxScore) * 100]
+    : [],
   );
-  const pctScores = finished
-    .map((e) => e.attempt!)
-    .filter((a) => a.maxScore > 0)
-    .map((a) => ((a.totalScore ?? a.autoScore ?? 0) / a.maxScore) * 100);
   const avgPct =
     pctScores.length > 0 ?
       `${Math.round(pctScores.reduce((s, p) => s + p, 0) / pctScores.length)}%`

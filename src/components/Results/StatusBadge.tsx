@@ -4,7 +4,7 @@ const statusMap: Record<string, { label: string; className: string }> = {
     className: "bg-warning-surface text-warning",
   },
   submitted: {
-    label: "Submitted",
+    label: "Marking pending",
     className: "bg-info-surface text-info",
   },
   graded: {

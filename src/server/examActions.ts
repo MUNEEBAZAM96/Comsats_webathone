@@ -150,6 +150,8 @@ export const createExam = async (formData: FormData) => {
         endTime: parsed.endTime ? new Date(parsed.endTime) : null,
         shuffleQuestions: parsed.shuffleQuestions ?? false,
         shuffleOptions: parsed.shuffleOptions ?? false,
+        resultReveal: parsed.resultReveal,
+        passMarkPercent: parsed.passMarkPercent ?? null,
         status: "draft",
         totalMarks: 0,
         createdById: session.user.id,
@@ -201,6 +203,10 @@ export const updateExam = async (id: string, formData: FormData) => {
         : {}),
         ...(formData.has("shuffleOptions") ?
           { shuffleOptions: parsed.shuffleOptions ?? false }
+        : {}),
+        ...(formData.has("resultReveal") ? { resultReveal: parsed.resultReveal } : {}),
+        ...(formData.has("passMarkPercent") ?
+          { passMarkPercent: parsed.passMarkPercent ?? null }
         : {}),
       },
     });
@@ -364,6 +370,9 @@ export const addQuestion = async (examId: string, formData: FormData) => {
       answer: parsed.answer,
       markingSchemeJson: parsed.markingScheme || null,
       partialCredit: parsed.partialCredit,
+      manualGrading: parsed.manualGrading,
+      multiSelectRule: parsed.multiSelectRule || undefined,
+      wrongPenalty: parsed.wrongPenalty,
     });
 
     const maxOrder = await prisma.question.findFirst({
@@ -416,6 +425,9 @@ export const updateQuestion = async (id: string, formData: FormData) => {
       answer: parsed.answer,
       markingSchemeJson: parsed.markingScheme || null,
       partialCredit: parsed.partialCredit,
+      manualGrading: parsed.manualGrading,
+      multiSelectRule: parsed.multiSelectRule || undefined,
+      wrongPenalty: parsed.wrongPenalty,
     });
 
     await prisma.question.update({

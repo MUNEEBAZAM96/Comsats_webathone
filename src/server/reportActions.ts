@@ -54,8 +54,18 @@ export const publishCandidateResultReport = async (attemptId: string) => {
   const attempt = await prisma.examAttempt.findUnique({
     where: { id: attemptId },
     include: {
-      exam: { select: { id: true, title: true, createdById: true } },
+      exam: {
+        select: { id: true, title: true, createdById: true, resultsPublishedAt: true },
+      },
       user: { select: { name: true } },
+      answers: {
+        where: { feedback: { not: null } },
+        select: {
+          feedback: true,
+          score: true,
+          attemptQuestion: { select: { order: true, points: true } },
+        },
+      },
     },
   });
   if (!attempt) throw new Error("Attempt not found");
@@ -63,13 +73,18 @@ export const publishCandidateResultReport = async (attemptId: string) => {
     throw new Error("Cannot publish report for an in-progress attempt");
 
   await assertCanPublishAttempt(session, attempt);
+  if (!attempt.exam.resultsPublishedAt)
+    throw new Error("Publish the exam's results before issuing a result report");
+  if (attempt.totalScore === null)
+    throw new Error("This attempt still has answers waiting for a manual mark");
+  const totalScore = attempt.totalScore;
 
   const payload: CanonicalCandidateReport = {
     type: "candidate_result",
     examId: attempt.examId,
     attemptId: attempt.id,
     examTitle: attempt.exam.title,
-    totalScore: attempt.totalScore ?? attempt.autoScore ?? 0,
+    totalScore,
     maxScore: attempt.maxScore,
     submittedAt: attempt.submittedAt?.toISOString() ?? null,
   };
@@ -109,17 +124,25 @@ export const publishCandidateResultReport = async (attemptId: string) => {
 
   const percentage =
     attempt.maxScore > 0 ?
-      Math.round(
-        ((attempt.totalScore ?? attempt.autoScore ?? 0) / attempt.maxScore) *
-          1000,
-      ) / 10
+      Math.round((totalScore / attempt.maxScore) * 1000) / 10
     : 0;
+
+  const feedback = attempt.answers
+    .filter((a) => a.feedback?.trim() && a.attemptQuestion)
+    .sort((a, b) => (a.attemptQuestion?.order ?? 0) - (b.attemptQuestion?.order ?? 0))
+    .map((a) => ({
+      question: (a.attemptQuestion?.order ?? 0) + 1,
+      score: a.score,
+      points: a.attemptQuestion?.points ?? 0,
+      text: a.feedback ?? "",
+    }));
 
   const pdfBuffer = await renderPdfToBuffer(
     createElement(CandidateResultDocument, {
       examTitle: attempt.exam.title,
       candidateLabel: attempt.user.name,
-      totalScore: attempt.totalScore ?? attempt.autoScore ?? 0,
+      feedback,
+      totalScore,
       maxScore: attempt.maxScore,
       percentage,
       submittedAt:
@@ -144,10 +167,12 @@ export const publishExamSummaryReport = async (examId: string) => {
   const session = await requirePublisher();
   const exam = await prisma.exam.findUnique({
     where: { id: examId },
-    select: { id: true, title: true, createdById: true },
+    select: { id: true, title: true, createdById: true, resultsPublishedAt: true },
   });
   if (!exam) throw new Error("Exam not found");
   await assertCanPublishExam(session, exam);
+  if (!exam.resultsPublishedAt)
+    throw new Error("Publish the exam's results before issuing a summary report");
 
   const attempts = await prisma.examAttempt.findMany({
     where: { examId, status: { not: "in_progress" } },

@@ -15,9 +15,11 @@ export const bankQuestionImportRowSchema = z.object({
     "single_choice",
     "true_false",
     "short_answer",
+    "long_answer",
   ]),
   options: z.string().optional().or(z.literal("")),
-  answer: z.string().min(1),
+  /** Optional for long_answer (grader guidance only). */
+  answer: z.string().optional().default(""),
   points: z.coerce.number().int().min(0).max(999),
   difficulty: z.enum(["easy", "medium", "hard"]).optional().default("medium"),
   topicId: z.string().min(1),

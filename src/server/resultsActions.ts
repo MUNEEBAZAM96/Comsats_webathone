@@ -1,210 +1,299 @@
 "use server";
 
 import "server-only";
-import { headers } from "next/headers";
 import { redirect } from "next/navigation";
-import { auth } from "@/lib/auth";
 import prisma from "@/lib/database/dbClient";
+import { isManualQuestion, scorePercent } from "@/lib/exam/grading";
+import { getEffectiveExamStatus } from "@/lib/exam/lifecycle";
+import { finalizeExpiredAttempts } from "@/server/attemptSweep";
+import {
+  AccessError,
+  assertCanMonitorExam,
+  assertPermission,
+  getStaffSession,
+  staffBasePath,
+  type StaffSession,
+} from "@/server/examAccess";
 
-const getProctorExamIds = async (proctorId: string) => {
-  const assignments = await prisma.examProctor.findMany({
-    where: { proctorId },
-    select: { examId: true },
-  });
-  return assignments.map((a) => a.examId);
+/** Staff with `result:read`; anyone else is sent home. */
+const resultsSession = async (): Promise<StaffSession> => {
+  const session = await getStaffSession();
+  if (!session) redirect("/");
+  try {
+    await assertPermission(session, { result: ["read"] });
+  } catch {
+    redirect("/");
+  }
+  return session;
 };
 
-export const getExamResults = async (examId: string) => {
-  const session = await auth.api.getSession({ headers: await headers() });
-  if (!session) redirect("/");
+const isManager = (session: StaffSession, createdById: string) =>
+  session.user.role === "admin" ||
+  (session.user.role === "examiner" && createdById === session.user.id);
 
-  const { success: canRead } = await auth.api
-    .userHasPermission({
-      body: { userId: session.user.id, permissions: { result: ["read"] } },
-    })
-    .catch(() => ({ success: false as const }));
-  if (!canRead) redirect("/");
+const resultsHome = (session: StaffSession) =>
+  `${staffBasePath(session.user.role)}/results` as const;
 
+const monitorOrRedirect = async (examId: string, session: StaffSession) => {
   try {
-    const exam = await prisma.exam.findUnique({
-      where: { id: examId },
-      select: { id: true, title: true, createdById: true },
-    });
-
-    if (!exam) {
-      redirect("/");
-    }
-
-    if (
-      session.user.role === "examiner" &&
-      exam.createdById !== session.user.id
-    ) {
-      redirect("/examiner/exams");
-    }
-
-    if (session.user.role === "proctor") {
-      const proctorExamIds = await getProctorExamIds(session.user.id);
-      if (!proctorExamIds.includes(examId))
-        redirect("/proctor/results" as never);
-    }
-
-    const attempts = await prisma.examAttempt.findMany({
-      where: { examId, status: { not: "in_progress" } },
-      include: {
-        user: { select: { id: true, name: true, email: true } },
-        _count: { select: { answers: true } },
-      },
-      orderBy: { submittedAt: "desc" },
-    });
-
-    const questionCount = await prisma.question.count({ where: { examId } });
-
-    return {
-      examTitle: exam.title,
-      questionCount,
-      attempts: attempts.map((a) => ({
-        id: a.id,
-        student: { id: a.user.id, name: a.user.name, email: a.user.email },
-        status: a.status,
-        autoScore: a.autoScore,
-        totalScore: a.totalScore,
-        maxScore: a.maxScore,
-        startedAt: a.startedAt,
-        submittedAt: a.submittedAt,
-        answerCount: a._count.answers,
-        questionCount,
-      })),
-    };
+    return await assertCanMonitorExam(examId, session);
   } catch (e) {
-    if (e instanceof Error) throw e;
-    throw new Error("Failed to fetch exam results");
+    if (e instanceof AccessError) redirect(resultsHome(session));
+    throw e;
   }
 };
 
-export const getAllResults = async () => {
-  const session = await auth.api.getSession({ headers: await headers() });
-  if (!session) redirect("/");
+const pendingByAttempt = async (attemptIds: string[]) => {
+  if (attemptIds.length === 0) return new Map<string, number>();
+  const rows = await prisma.answer.groupBy({
+    by: ["attemptId"],
+    where: {
+      attemptId: { in: attemptIds },
+      requiresManual: true,
+      manualScore: null,
+    },
+    _count: { _all: true },
+  });
+  return new Map(rows.map((r) => [r.attemptId, r._count._all]));
+};
 
-  if (
-    session.user.role !== "admin" &&
-    session.user.role !== "examiner" &&
-    session.user.role !== "proctor"
-  )
-    redirect("/");
+/** Every finished attempt of one exam with score breakdown. */
+export const getExamResults = async (examId: string) => {
+  const session = await resultsSession();
+  const exam = await monitorOrRedirect(examId, session);
+  await finalizeExpiredAttempts(exam.id);
 
-  try {
-    const where: Record<string, unknown> = {
-      status: { not: "in_progress" },
-    };
-
-    if (session.user.role === "examiner") {
-      const examIds = await prisma.exam.findMany({
-        where: { createdById: session.user.id },
-        select: { id: true },
-      });
-      where.examId = { in: examIds.map((e) => e.id) };
-    } else if (session.user.role === "proctor") {
-      const examIds = await getProctorExamIds(session.user.id);
-      where.examId = { in: examIds };
-    }
-
-    const attempts = await prisma.examAttempt.findMany({
-      where,
-      include: {
-        exam: { select: { id: true, title: true } },
+  const [attempts, questionCount, inProgress] = await Promise.all([
+    prisma.examAttempt.findMany({
+      where: { examId: exam.id, status: { not: "in_progress" } },
+      select: {
+        id: true,
+        status: true,
+        autoScore: true,
+        manualScore: true,
+        totalScore: true,
+        maxScore: true,
+        startedAt: true,
+        submittedAt: true,
+        gradedAt: true,
+        submitSource: true,
         user: { select: { id: true, name: true, email: true } },
+        _count: {
+          select: { answers: { where: { NOT: [{ text: null }, { text: "" }] } } },
+        },
       },
       orderBy: { submittedAt: "desc" },
-    });
+    }),
+    prisma.question.count({ where: { examId: exam.id } }),
+    prisma.examAttempt.count({ where: { examId: exam.id, status: "in_progress" } }),
+  ]);
+  const pending = await pendingByAttempt(attempts.map((a) => a.id));
 
-    return attempts.map((a) => ({
+  return {
+    examId: exam.id,
+    examTitle: exam.title,
+    effectiveStatus: getEffectiveExamStatus(exam),
+    resultsPublishedAt: exam.resultsPublishedAt,
+    resultReveal: exam.resultReveal,
+    passMarkPercent: exam.passMarkPercent,
+    totalMarks: exam.totalMarks,
+    canManage: isManager(session, exam.createdById),
+    questionCount,
+    inProgress,
+    pendingManual: [...pending.values()].reduce((s, n) => s + n, 0),
+    attempts: attempts.map((a) => ({
       id: a.id,
-      exam: { id: a.exam.id, title: a.exam.title },
-      student: { id: a.user.id, name: a.user.name, email: a.user.email },
+      student: a.user,
       status: a.status,
       autoScore: a.autoScore,
+      manualScore: a.manualScore,
       totalScore: a.totalScore,
       maxScore: a.maxScore,
+      percentage: scorePercent(a.totalScore, a.maxScore),
+      pendingManual: pending.get(a.id) ?? 0,
+      submitSource: a.submitSource,
+      startedAt: a.startedAt,
       submittedAt: a.submittedAt,
-    }));
-  } catch (e) {
-    if (e instanceof Error) throw e;
-    throw new Error("Failed to fetch results");
-  }
+      gradedAt: a.gradedAt,
+      answerCount: a._count.answers,
+      questionCount,
+    })),
+  };
 };
 
+export type ExamResults = Awaited<ReturnType<typeof getExamResults>>;
+
+/** Finished attempts across every exam the viewer may read. */
+export const getAllResults = async () => {
+  const session = await resultsSession();
+  const { id: userId, role } = session.user;
+
+  const examFilter =
+    role === "examiner" ? { exam: { createdById: userId } }
+    : role === "proctor" ? { exam: { proctors: { some: { proctorId: userId } } } }
+    : {};
+
+  const attempts = await prisma.examAttempt.findMany({
+    where: { status: { not: "in_progress" }, ...examFilter },
+    select: {
+      id: true,
+      status: true,
+      autoScore: true,
+      manualScore: true,
+      totalScore: true,
+      maxScore: true,
+      submittedAt: true,
+      exam: { select: { id: true, title: true, resultsPublishedAt: true } },
+      user: { select: { id: true, name: true, email: true } },
+    },
+    orderBy: { submittedAt: "desc" },
+  });
+
+  return attempts.map((a) => ({
+    id: a.id,
+    exam: a.exam,
+    student: a.user,
+    status: a.status,
+    autoScore: a.autoScore,
+    manualScore: a.manualScore,
+    totalScore: a.totalScore,
+    maxScore: a.maxScore,
+    percentage: scorePercent(a.totalScore, a.maxScore),
+    submittedAt: a.submittedAt,
+  }));
+};
+
+/**
+ * Staff view of one finished attempt from its snapshots: prompt, key, the
+ * candidate's answer, auto/manual/final score, feedback and audits.
+ */
 export const getResultDetail = async (attemptId: string) => {
-  const session = await auth.api.getSession({ headers: await headers() });
-  if (!session) redirect("/");
-  if (
-    session.user.role !== "admin" &&
-    session.user.role !== "examiner" &&
-    session.user.role !== "proctor"
-  )
-    redirect("/");
+  const session = await resultsSession();
+  if (typeof attemptId !== "string" || !attemptId || attemptId.length > 64)
+    redirect(resultsHome(session));
 
-  try {
-    const attempt = await prisma.examAttempt.findUnique({
-      where: { id: attemptId },
-      include: {
-        exam: {
-          include: {
-            questions: { orderBy: { order: "asc" } },
-          },
+  const attempt = await prisma.examAttempt.findUnique({
+    where: { id: attemptId },
+    select: {
+      id: true,
+      examId: true,
+      status: true,
+      startedAt: true,
+      submittedAt: true,
+      submitSource: true,
+      autoScore: true,
+      manualScore: true,
+      totalScore: true,
+      maxScore: true,
+      gradedAt: true,
+      user: { select: { id: true, name: true, email: true } },
+      questions: { orderBy: { order: "asc" } },
+      answers: {
+        select: {
+          id: true,
+          questionId: true,
+          text: true,
+          score: true,
+          autoScore: true,
+          manualScore: true,
+          feedback: true,
+          requiresManual: true,
+          gradedAt: true,
+          gradedBy: { select: { name: true } },
         },
-        answers: true,
-        questions: { orderBy: { order: "asc" } },
-        user: { select: { id: true, name: true, email: true } },
       },
-    });
+    },
+  });
+  if (!attempt) redirect(resultsHome(session));
+  const exam = await monitorOrRedirect(attempt.examId, session);
 
-    if (!attempt) redirect("/");
+  // Answer keys are never shown for an attempt that is still being written.
+  if (attempt.status === "in_progress") redirect(resultsHome(session));
+  if (attempt.questions.length === 0)
+    throw new Error("Exam question snapshots are missing for this attempt");
 
-    if (
-      session.user.role === "examiner" &&
-      attempt.exam.createdById !== session.user.id
-    ) {
-      redirect("/examiner/results");
-    }
+  const canManage = isManager(session, exam.createdById);
+  const audits =
+    canManage ?
+      await prisma.gradeAudit.findMany({
+        where: { answer: { attemptId: attempt.id } },
+        orderBy: { createdAt: "desc" },
+        take: 100,
+        select: {
+          id: true,
+          answerId: true,
+          action: true,
+          previousScore: true,
+          newScore: true,
+          reason: true,
+          createdAt: true,
+          gradedBy: { select: { name: true } },
+        },
+      })
+    : [];
 
-    if (session.user.role === "proctor") {
-      const proctorExamIds = await getProctorExamIds(session.user.id);
-      if (!proctorExamIds.includes(attempt.examId))
-        redirect("/proctor/results" as never);
-    }
-
-    // Never expose answer keys / marking schemes while attempt is in progress
-    if (attempt.status === "in_progress") {
-      redirect(
-        session.user.role === "admin" ? "/admin/results"
-        : session.user.role === "examiner" ? "/examiner/results"
-        : ("/proctor/results" as never),
-      );
-    }
-
-    if (attempt.questions.length === 0) {
-      throw new Error("Exam question snapshots are missing for this attempt");
-    }
-
-    const questions = attempt.questions.map((s) => ({
+  return {
+    id: attempt.id,
+    status: attempt.status,
+    startedAt: attempt.startedAt,
+    submittedAt: attempt.submittedAt,
+    submitSource: attempt.submitSource,
+    autoScore: attempt.autoScore,
+    manualScore: attempt.manualScore,
+    totalScore: attempt.totalScore,
+    maxScore: attempt.maxScore,
+    gradedAt: attempt.gradedAt,
+    user: attempt.user,
+    exam: {
+      id: exam.id,
+      title: exam.title,
+      resultsPublishedAt: exam.resultsPublishedAt,
+      resultReveal: exam.resultReveal,
+      passMarkPercent: exam.passMarkPercent,
+    },
+    canManage,
+    questions: attempt.questions.map((s) => ({
       id: s.sourceQuestionId,
       text: s.text,
       type: s.type,
       options: s.optionOrder ?? s.options,
       answer: s.answer,
+      manual: isManualQuestion({
+        type: s.type,
+        answer: s.answer,
+        points: s.points,
+        markingScheme: s.markingScheme,
+      }),
       points: s.points,
       order: s.order,
       difficulty: s.difficulty,
-      // Staff may see keys after submit; omit raw markingScheme JSON from proctors
-      ...(session.user.role === "proctor" ? {} : { markingScheme: s.markingScheme }),
-    }));
-    return {
-      ...attempt,
-      exam: { ...attempt.exam, questions },
-    };
-  } catch (e) {
-    if (e && typeof e === "object" && "digest" in e) throw e;
-    if (e instanceof Error) throw e;
-    throw new Error("Failed to fetch result details");
-  }
+      // Raw marking schemes are for the exam's managers only.
+      ...(canManage ? { markingScheme: s.markingScheme } : {}),
+    })),
+    answers: attempt.answers.map((a) => ({
+      id: a.id,
+      questionId: a.questionId,
+      text: a.text,
+      score: a.score,
+      autoScore: a.autoScore,
+      manualScore: a.manualScore,
+      feedback: a.feedback,
+      requiresManual: a.requiresManual,
+      manuallyGraded: a.manualScore != null,
+      gradedAt: a.gradedAt,
+      gradedBy: a.gradedBy?.name ?? null,
+    })),
+    audits: audits.map((a) => ({
+      id: a.id,
+      answerId: a.answerId,
+      action: a.action,
+      previousScore: a.previousScore,
+      newScore: a.newScore,
+      reason: a.reason,
+      createdAt: a.createdAt,
+      by: a.gradedBy.name,
+    })),
+  };
 };
+
+export type StaffResultDetail = Awaited<ReturnType<typeof getResultDetail>>;

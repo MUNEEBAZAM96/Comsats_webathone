@@ -1,97 +1,106 @@
 import "server-only";
 
 import prisma from "@/lib/database/dbClient";
+import { isManualQuestion } from "@/lib/exam/grading";
+import { computeExamAnalytics } from "./computeExamAnalytics";
 
-const PASS_PCT = 50;
-
+/** Load finished attempts and snapshot answers for one exam, then compute analytics. */
 export const getExamAnalytics = async (examId: string) => {
   const exam = await prisma.exam.findUnique({
     where: { id: examId },
-    select: { id: true, title: true, totalMarks: true },
+    select: { id: true, title: true, passMarkPercent: true },
   });
   if (!exam) throw new Error("Exam not found");
 
-  const attempts = await prisma.examAttempt.findMany({
-    where: { examId, status: { not: "in_progress" } },
-    select: {
-      totalScore: true,
-      maxScore: true,
-      submittedAt: true,
-      user: { select: { name: true } },
-    },
-    orderBy: { submittedAt: "asc" },
-  });
+  const [assigned, started, attempts, examQuestions, answers, incidents] =
+    await Promise.all([
+      prisma.examAssignment.count({ where: { examId } }),
+      prisma.examAttempt.count({ where: { examId } }),
+      prisma.examAttempt.findMany({
+        where: { examId, status: { not: "in_progress" } },
+        select: {
+          id: true,
+          totalScore: true,
+          maxScore: true,
+          startedAt: true,
+          submittedAt: true,
+          submitSource: true,
+        },
+      }),
+      prisma.question.findMany({
+        where: { examId },
+        select: { id: true, order: true },
+      }),
+      prisma.answer.findMany({
+        where: {
+          attempt: { examId, status: { not: "in_progress" } },
+          attemptQuestionId: { not: null },
+        },
+        select: {
+          attemptId: true,
+          text: true,
+          score: true,
+          manualScore: true,
+          attemptQuestion: {
+            select: {
+              sourceQuestionId: true,
+              text: true,
+              type: true,
+              points: true,
+              options: true,
+              answer: true,
+              markingScheme: true,
+            },
+          },
+        },
+      }),
+      prisma.examIncident.findMany({
+        where: { examId },
+        select: { category: true, severity: true },
+      }),
+    ]);
 
-  const scores = attempts.map((a) => a.totalScore ?? 0);
-  const empty = scores.length === 0;
-
-  const average =
-    empty ? 0 : Math.round((scores.reduce((s, n) => s + n, 0) / scores.length) * 10) / 10;
-  const highest = empty ? 0 : Math.max(...scores);
-  const lowest = empty ? 0 : Math.min(...scores);
-
-  let pass = 0;
-  let fail = 0;
-  for (const a of attempts) {
-    const pct = a.maxScore > 0 ? ((a.totalScore ?? 0) / a.maxScore) * 100 : 0;
-    if (pct >= PASS_PCT) pass++;
-    else fail++;
-  }
-
-  const snapshots = await prisma.attemptQuestion.findMany({
-    where: { attempt: { examId, status: { not: "in_progress" } } },
-    select: {
-      sourceQuestionId: true,
-      text: true,
-      points: true,
-      difficulty: true,
-      answers: { select: { score: true } },
-    },
-  });
-
-  const byQuestion = new Map<
-    string,
-    { text: string; difficulty: string; points: number; correct: number; total: number }
-  >();
-
-  for (const s of snapshots) {
-    const cur = byQuestion.get(s.sourceQuestionId) ?? {
+  const examOrder = new Map(examQuestions.map((q) => [q.id, q.order]));
+  const questions = new Map<string, Parameters<typeof computeExamAnalytics>[0]["questions"][number]>();
+  for (const a of answers) {
+    const s = a.attemptQuestion;
+    if (!s || questions.has(s.sourceQuestionId)) continue;
+    questions.set(s.sourceQuestionId, {
+      id: s.sourceQuestionId,
+      number: (examOrder.get(s.sourceQuestionId) ?? questions.size) + 1,
       text: s.text,
-      difficulty: s.difficulty,
+      type: s.type,
       points: s.points,
-      correct: 0,
-      total: 0,
-    };
-    for (const ans of s.answers) {
-      cur.total += 1;
-      if ((ans.score ?? 0) >= s.points) cur.correct += 1;
-    }
-    byQuestion.set(s.sourceQuestionId, cur);
+      options: s.options,
+      manual: isManualQuestion(s),
+    });
   }
-
-  const questionStats = [...byQuestion.entries()].map(([id, q]) => ({
-    id,
-    text: q.text.slice(0, 80),
-    difficulty: q.difficulty,
-    correctRate: q.total === 0 ? 0 : Math.round((q.correct / q.total) * 100),
-  }));
-
-  const trend = attempts.map((a, i) => ({
-    index: i + 1,
-    score: a.totalScore ?? 0,
-    label: a.user.name.split(" ")[0] ?? `S${i + 1}`,
-  }));
 
   return {
     examTitle: exam.title,
-    attemptCount: attempts.length,
-    average,
-    highest,
-    lowest,
-    pass,
-    fail,
-    questionStats,
-    trend,
-    empty,
+    ...computeExamAnalytics({
+      passMarkPercent: exam.passMarkPercent,
+      assigned,
+      started,
+      attempts,
+      questions: [...questions.values()],
+      answers: answers.flatMap((a) =>
+        a.attemptQuestion ?
+          [
+            {
+              attemptId: a.attemptId,
+              questionId: a.attemptQuestion.sourceQuestionId,
+              text: a.text,
+              score: a.score,
+              manualScore: a.manualScore,
+              points: a.attemptQuestion.points,
+            },
+          ]
+        : [],
+      ),
+      incidents,
+    }),
   };
 };
+
+export type LoadedExamAnalytics = Awaited<ReturnType<typeof getExamAnalytics>>;

@@ -8,6 +8,7 @@ import { Button } from "@/components/shadcnui/button";
 import { PdfTextPreview } from "@/features/documents/components/PdfTextPreview";
 import { TabularImportPanel } from "@/features/imports/components/TabularImportPanel";
 import { getSubjects } from "@/server/bankActions";
+import { requireRole } from "@/server/session";
 
 export const metadata: Metadata = {
   title: "Question Bank",
@@ -15,6 +16,7 @@ export const metadata: Metadata = {
 };
 
 const AdminQuestionBankPage = async () => {
+  await requireRole("admin");
   const subjects = await getSubjects();
 
   return (

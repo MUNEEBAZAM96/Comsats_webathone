@@ -22,7 +22,32 @@ export const markingSchemeSchema = z.object({
   normalizeWhitespace: z.boolean().optional(),
   partialCredit: z.boolean().optional(),
   pointsPerMatch: z.number().nullable().optional(),
+  /** Multi-select only. Missing → derived from `partialCredit` (legacy). */
+  multiSelectRule: z
+    .enum(["all_or_nothing", "partial", "partial_with_penalty"])
+    .optional(),
+  /** Fraction of one correct option's credit deducted per wrong pick. */
+  wrongPenalty: z.number().min(0).max(1).optional(),
 });
+
+export const MULTI_SELECT_RULES = [
+  "all_or_nothing",
+  "partial",
+  "partial_with_penalty",
+] as const;
+export type MultiSelectRule = (typeof MULTI_SELECT_RULES)[number];
+
+/** Question types that are always graded by a person. */
+export const MANUAL_ONLY_TYPES = ["long_answer"] as const;
+
+export const QUESTION_TYPES = [
+  "multiple_choice",
+  "single_choice",
+  "true_false",
+  "short_answer",
+  "long_answer",
+] as const;
+export type QuestionType = (typeof QUESTION_TYPES)[number];
 
 export type MarkingScheme = z.infer<typeof markingSchemeSchema>;
 
@@ -66,7 +91,23 @@ export const buildQuestionGradingFields = (input: {
   answer: string;
   markingSchemeJson?: string | null;
   partialCredit?: boolean;
+  /** short_answer only: skip keyword marking and grade by hand */
+  manualGrading?: boolean;
+  multiSelectRule?: MultiSelectRule;
+  wrongPenalty?: number;
 }): { answer: string; markingScheme: string | null } => {
+  if (
+    input.type === "long_answer" ||
+    (input.type === "short_answer" && input.manualGrading)
+  ) {
+    // `answer` holds optional model-answer / rubric guidance for graders.
+    const scheme: MarkingScheme = { version: 1, mode: "manual" };
+    return {
+      answer: input.answer.trim(),
+      markingScheme: serializeMarkingScheme(scheme),
+    };
+  }
+
   if (input.markingSchemeJson?.trim()) {
     const parsed = parseMarkingScheme(input.markingSchemeJson);
     if (!parsed) throw new Error("Invalid marking scheme JSON");
@@ -116,14 +157,23 @@ export const buildQuestionGradingFields = (input: {
     )
       throw new Error("Single-answer questions require exactly one correct option");
 
+    const isMulti = input.type === "multiple_choice";
+    const multiSelectRule: MultiSelectRule | undefined =
+      isMulti ?
+        (input.multiSelectRule ??
+        ((input.partialCredit ?? true) ? "partial" : "all_or_nothing"))
+      : undefined;
     const scheme: MarkingScheme = {
       version: 1,
-      mode: input.type === "multiple_choice" ? "all_of" : "exact",
+      mode: isMulti ? "all_of" : "exact",
       correctOptions,
       caseSensitive: false,
       normalizeWhitespace: true,
-      partialCredit:
-        input.type === "multiple_choice" ? (input.partialCredit ?? true) : false,
+      partialCredit: isMulti ? multiSelectRule !== "all_or_nothing" : false,
+      ...(multiSelectRule ? { multiSelectRule } : {}),
+      ...(multiSelectRule === "partial_with_penalty" ?
+        { wrongPenalty: input.wrongPenalty ?? 1 }
+      : {}),
     };
 
     return {

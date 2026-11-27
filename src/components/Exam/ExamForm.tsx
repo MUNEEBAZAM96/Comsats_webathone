@@ -2,7 +2,12 @@
 
 import { useRouter } from "next/navigation";
 import type { Route } from "next";
-import { examFormSchema, ExamFormType } from "@/lib/zodSchema";
+import {
+  examFormSchema,
+  ExamFormType,
+  RESULT_REVEAL_OPTIONS,
+  type ResultReveal,
+} from "@/lib/zodSchema";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Loader2Icon, SaveIcon } from "lucide-react";
 import { Controller, useForm } from "react-hook-form";
@@ -11,6 +16,12 @@ import { Button } from "../shadcnui/button";
 import { Field, FieldError, FieldLabel } from "../shadcnui/field";
 import { Input } from "../shadcnui/input";
 import { Textarea } from "../shadcnui/textarea";
+
+export const RESULT_REVEAL_LABEL: Record<ResultReveal, string> = {
+  none: "Withhold results",
+  score_only: "Show scores and feedback",
+  score_and_answers: "Show scores, feedback and correct answers",
+};
 
 type ExamFormProps = {
   action: (
@@ -41,6 +52,8 @@ const ExamForm = ({
       endTime: defaultValues?.endTime ?? "",
       shuffleQuestions: defaultValues?.shuffleQuestions ?? false,
       shuffleOptions: defaultValues?.shuffleOptions ?? false,
+      resultReveal: defaultValues?.resultReveal ?? "score_and_answers",
+      passMarkPercent: defaultValues?.passMarkPercent,
     },
     mode: "all",
   });
@@ -55,6 +68,8 @@ const ExamForm = ({
     fd.set("endTime", data.endTime ?? "");
     fd.set("shuffleQuestions", String(data.shuffleQuestions ?? false));
     fd.set("shuffleOptions", String(data.shuffleOptions ?? false));
+    fd.set("resultReveal", data.resultReveal ?? "score_and_answers");
+    fd.set("passMarkPercent", data.passMarkPercent == null ? "" : String(data.passMarkPercent));
     try {
       const result = await action(fd);
       if (result && "id" in result) {
@@ -122,6 +137,53 @@ const ExamForm = ({
           </Field>
         )}
       />
+
+      <div className="grid gap-4 sm:grid-cols-2">
+        <Controller
+          name="resultReveal"
+          control={control}
+          render={({ field, fieldState }) => (
+            <Field data-invalid={fieldState.invalid}>
+              <FieldLabel htmlFor={field.name}>After results are published</FieldLabel>
+              <select
+                {...field}
+                id={field.name}
+                value={field.value ?? "score_and_answers"}
+                aria-invalid={fieldState.invalid}
+                className="border-input bg-input/30 h-10 rounded-3xl border px-3 text-sm">
+                {RESULT_REVEAL_OPTIONS.map((value) => (
+                  <option
+                    key={value}
+                    value={value}>
+                    {RESULT_REVEAL_LABEL[value]}
+                  </option>
+                ))}
+              </select>
+              {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
+            </Field>
+          )}
+        />
+        <Controller
+          name="passMarkPercent"
+          control={control}
+          render={({ field, fieldState }) => (
+            <Field data-invalid={fieldState.invalid}>
+              <FieldLabel htmlFor={field.name}>Pass mark (%)</FieldLabel>
+              <Input
+                {...field}
+                id={field.name}
+                type="number"
+                min={0}
+                max={100}
+                placeholder="Optional"
+                value={field.value == null ? "" : String(field.value)}
+                aria-invalid={fieldState.invalid}
+              />
+              {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
+            </Field>
+          )}
+        />
+      </div>
 
       <Controller
         name="duration"

@@ -5,6 +5,7 @@ import { auth } from "@/lib/auth";
 import CreateUserDialog from "@/components/User/CreateUserDialog";
 import UsersTable from "@/components/User/UsersTable";
 import { TabularImportPanel } from "@/features/imports/components/TabularImportPanel";
+import { requireRole } from "@/server/session";
 
 export const metadata: Metadata = {
   title: "Users",
@@ -12,6 +13,7 @@ export const metadata: Metadata = {
 };
 
 const AdminUsersPage = async () => {
+  await requireRole("admin");
   const session = await auth.api.getSession({ headers: await headers() });
   if (!session || session.user.role !== "admin") redirect("/");
 

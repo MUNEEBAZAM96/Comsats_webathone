@@ -17,6 +17,8 @@ import {
   importRandomBankQuestions,
 } from "@/server/bankActions";
 import { questionFormSchema, QuestionFormType } from "@/lib/zodSchema";
+import { resolveMultiSelectRule } from "@/lib/exam/grading";
+import { parseMarkingScheme } from "@/lib/exam/markingScheme";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Controller, useForm } from "react-hook-form";
 import { Button } from "../shadcnui/button";
@@ -42,6 +44,7 @@ type Question = {
   points: number;
   order: number;
   difficulty?: string;
+  markingScheme?: string | null;
 };
 
 type BankQuestion = {
@@ -74,7 +77,8 @@ const questionTypes: Record<string, string> = {
   multiple_choice: "Multiple Select",
   single_choice: "Single Answer",
   true_false: "True / False",
-  short_answer: "Written Response",
+  short_answer: "Short Answer",
+  long_answer: "Long Answer",
 };
 
 const EditQuestionForm = ({
@@ -111,6 +115,14 @@ const EditQuestionForm = ({
     fd.set("answer", data.answer ?? "");
     fd.set("points", String(data.points));
     fd.set("difficulty", data.difficulty ?? "medium");
+    // Keep the question's marking mode; this editor only changes content and key.
+    const scheme = parseMarkingScheme(question.markingScheme);
+    if (data.type === "short_answer" && scheme?.mode === "manual")
+      fd.set("manualGrading", "true");
+    if (data.type === "multiple_choice" && scheme) {
+      fd.set("multiSelectRule", resolveMultiSelectRule(scheme));
+      if (scheme.wrongPenalty != null) fd.set("wrongPenalty", String(scheme.wrongPenalty));
+    }
 
     try {
       await updateQuestion(question.id, fd);

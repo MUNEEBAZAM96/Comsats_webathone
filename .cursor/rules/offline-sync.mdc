@@ -1,0 +1,19 @@
+---
+description: Offline answer queue, heartbeat, attempt events and monitoring (Phases 07–08)
+globs: src/features/exam-workspace/**,src/components/Student/ExamPlayer.tsx,src/server/studentExamActions.ts,src/server/monitoringActions.ts,src/components/Monitoring/**,src/lib/exam/syncSchemas.ts
+alwaysApply: false
+---
+
+# Offline sync and monitoring
+
+- Every edit is written to IndexedDB first (`answer-storage.ts`, per-question `clientSeq` + `idempotencyKey`), then sent in batches by `createAnswerSyncQueue` (`sync-manager.ts`): 400 ms debounce, ≤ 50 items, backoff 1→30 s with ±20% jitter.
+- Server `saveAnswers` decides per item: `saved` (higher seq), `duplicate` (same seq + key), `stale` (seq ≤ stored → returns the server copy), `invalid`. Batch failures: `deadline_passed`, `already_submitted`, `unauthorized`, `invalid` close or pause the queue.
+- An acknowledgement for an older seq never clears a newer local edit (`markAnswerSynced` compares seq).
+- UI callbacks are bound with `queue.setHandlers` in an effect — do not read refs during render.
+- Deadline = `min(startedAt + duration, exam.endTime)` on the server. Nothing extends it; late writes (including submit `finalItems`) are dropped. The timer only counts down from server `remainingMs` (monotonic clock).
+- Heartbeat updates `lastSeenAt` / `clientOnline` and delivers announcements. Connection (server time): online < 45 s and `clientOnline`, idle < 2 min, offline otherwise.
+- Attempt events (`connection_lost`, `tab_hidden`, `window_blur`, `multiple_tabs`, `sync_conflict`, …) are capped per call/attempt and never contain answer text.
+- Monitoring indicators are **not proof of misconduct**; show `MONITORING_DISCLAIMER`. Incidents are recorded by people; only the owner examiner or an admin resolves/dismisses.
+- Monitor access: `assertCanMonitorExam` (admin, owning examiner, assigned proctor). Monitor payloads never include answers, keys or answer text.
+- A true reload while offline needs a service worker (not implemented); answers survive closing the tab and are recovered on the next load.
+- Tests: `scripts/test-sync-queue.ts`, `scripts/e2e-phase07-09.ts`.

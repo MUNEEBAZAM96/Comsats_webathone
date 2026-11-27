@@ -111,9 +111,14 @@ export const buildResultsExport = (
   rows: {
     studentName: string;
     studentEmail: string;
+    status: string;
+    autoScore: number | null;
+    manualScore: number | null;
     totalScore: number | null;
     maxScore: number;
     submittedAt: Date | null;
+    gradedAt: Date | null;
+    submitSource: string | null;
   }[],
   format: "csv" | "xlsx",
 ): ExportFile => {
@@ -121,23 +126,35 @@ export const buildResultsExport = (
     "exam",
     "studentName",
     "studentEmail",
+    "status",
+    "autoScore",
+    "manualScore",
     "totalScore",
     "maxScore",
     "percentage",
     "submittedAt",
+    "gradedAt",
+    "submitSource",
   ];
   const data = rows.map((r) => {
-    const score = r.totalScore ?? 0;
+    // A null total means manual marking is still pending: leave it blank.
     const pct =
-      r.maxScore > 0 ? Math.round((score / r.maxScore) * 1000) / 10 : 0;
+      r.totalScore !== null && r.maxScore > 0 ?
+        Math.round((r.totalScore / r.maxScore) * 1000) / 10
+      : "";
     return {
       exam: examTitle,
       studentName: r.studentName,
       studentEmail: r.studentEmail,
-      totalScore: score,
+      status: r.status,
+      autoScore: r.autoScore ?? "",
+      manualScore: r.manualScore ?? "",
+      totalScore: r.totalScore ?? "",
       maxScore: r.maxScore,
       percentage: pct,
       submittedAt: r.submittedAt ? formatDisplayDateTime(r.submittedAt) : "",
+      gradedAt: r.gradedAt ? formatDisplayDateTime(r.gradedAt) : "",
+      submitSource: r.submitSource ?? "",
     };
   });
   const safe = examTitle.replace(/[^\w\-]+/g, "_").slice(0, 40);

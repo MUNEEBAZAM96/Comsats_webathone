@@ -9,6 +9,7 @@ import {
   getBankHierarchy,
   getTopicById,
 } from "@/server/bankActions";
+import { requireRole } from "@/server/session";
 
 export const metadata: Metadata = {
   title: "New Question",
@@ -20,6 +21,7 @@ const NewBankQuestionPage = async ({
 }: {
   params: Promise<{ topicId: string }>;
 }) => {
+  await requireRole("admin");
   const { topicId } = await params;
   const [topic, hierarchy] = await Promise.all([
     getTopicById(topicId),

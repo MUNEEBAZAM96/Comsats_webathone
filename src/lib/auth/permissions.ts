@@ -3,25 +3,33 @@ import { defaultStatements, adminAc } from "better-auth/plugins/admin/access";
 
 const statement = {
   ...defaultStatements,
-  exam: ["create", "read", "update", "delete", "publish", "assign"] as const,
-  result: ["read", "export", "delete"] as const,
+  exam: [
+    "create",
+    "read",
+    "update",
+    "delete",
+    "publish",
+    "assign",
+    "monitor",
+  ] as const,
+  result: ["read", "export", "delete", "grade", "publish"] as const,
 } as const;
 
 const ac = createAccessControl(statement);
 
 const adminRole = ac.newRole({
-  exam: ["create", "read", "update", "delete", "publish", "assign"],
-  result: ["read", "export", "delete"],
+  exam: ["create", "read", "update", "delete", "publish", "assign", "monitor"],
+  result: ["read", "export", "delete", "grade", "publish"],
   ...adminAc.statements,
 });
 
 const examiner = ac.newRole({
-  exam: ["create", "read", "update"],
-  result: ["read", "export"],
+  exam: ["create", "read", "update", "monitor"],
+  result: ["read", "export", "grade", "publish"],
 });
 
 const proctor = ac.newRole({
-  exam: ["read"],
+  exam: ["read", "monitor"],
   result: ["read"],
   session: ["list"],
 });

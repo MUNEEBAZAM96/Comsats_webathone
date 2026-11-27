@@ -2,25 +2,24 @@
 
 import "server-only";
 
-import { headers } from "next/headers";
 import { redirect } from "next/navigation";
-import { auth } from "@/lib/auth";
-import prisma from "@/lib/database/dbClient";
 import { getExamAnalytics } from "@/features/analytics/services/examAnalytics";
+import {
+  AccessError,
+  assertCanManageExam,
+  assertPermission,
+  requireStaffSession,
+} from "@/server/examAccess";
 
+/** Analytics are for the exam's managers (admin or owning examiner); proctors do not see them. */
 export const loadExamAnalytics = async (examId: string) => {
-  const session = await auth.api.getSession({ headers: await headers() });
-  if (!session) redirect("/");
-  if (session.user.role !== "admin" && session.user.role !== "examiner")
-    redirect("/");
-
-  const exam = await prisma.exam.findUnique({
-    where: { id: examId },
-    select: { createdById: true },
-  });
-  if (!exam) throw new Error("Exam not found");
-  if (session.user.role === "examiner" && exam.createdById !== session.user.id)
-    throw new Error("Not authorized");
-
+  try {
+    const session = await requireStaffSession("admin", "examiner");
+    await assertPermission(session, { result: ["read"] });
+    await assertCanManageExam(examId, session);
+  } catch (e) {
+    if (e instanceof AccessError) redirect("/");
+    throw e;
+  }
   return getExamAnalytics(examId);
 };

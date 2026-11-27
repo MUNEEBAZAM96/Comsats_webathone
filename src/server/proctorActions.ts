@@ -1,106 +1,103 @@
 "use server";
 
+import "server-only";
 import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
+import { z } from "zod";
 import { auth } from "@/lib/auth";
 import prisma from "@/lib/database/dbClient";
+import { withExamApiFields } from "@/lib/exam/lifecycle";
+import { ActionError, runAction } from "@/server/actionResult";
+import {
+  assertCanManageExam,
+  requireStaffSession,
+} from "@/server/examAccess";
 
-export const assignProctor = async (examId: string, proctorIds: string[]) => {
-  const session = await auth.api.getSession({ headers: await headers() });
-  if (!session) redirect("/");
-  if (session.user.role !== "admin" && session.user.role !== "examiner")
-    redirect("/");
+const idSchema = z.string().trim().min(1).max(64);
+const assignSchema = z.object({
+  examId: idSchema,
+  proctorIds: z.array(idSchema).min(1).max(100),
+});
 
-  try {
-    const exam = await prisma.exam.findUnique({ where: { id: examId } });
-    if (!exam) throw new Error("Exam not found");
-
-    if (session.user.role !== "admin" && exam.createdById !== session.user.id)
-      throw new Error("You do not have permission to assign proctors");
-
-    const data = proctorIds.map((userId) => ({
-      examId,
-      proctorId: userId,
-      assignedById: session.user.id,
-    }));
-
-    await prisma.$transaction(
-      data.map((d) => prisma.examProctor.create({ data: d })),
-    );
-
-    const basePath = session.user.role === "admin" ? "/admin" : "/examiner";
-    revalidatePath(`${basePath}/exams/${examId}/assign-proctor`);
-  } catch (e) {
-    if (e instanceof Error) throw e;
-    throw new Error("Failed to assign proctors");
-  }
+const revalidateAssignPages = (examId: string) => {
+  revalidatePath(`/admin/exams/${examId}/assign-proctor`);
+  revalidatePath(`/examiner/exams/${examId}/assign-proctor`);
+  revalidatePath("/proctor/exams");
 };
 
-export const unassignProctor = async (examId: string, proctorId: string) => {
-  const session = await auth.api.getSession({ headers: await headers() });
-  if (!session) redirect("/");
-  if (session.user.role !== "admin" && session.user.role !== "examiner")
-    redirect("/");
+/** Assign proctors; only users with the proctor role are accepted. Idempotent. */
+export const assignProctor = async (examId: string, proctorIds: string[]) =>
+  runAction(async () => {
+    const session = await requireStaffSession("admin", "examiner");
+    const parsed = assignSchema.safeParse({ examId, proctorIds });
+    if (!parsed.success) throw new ActionError("Choose at least one proctor");
+    const exam = await assertCanManageExam(parsed.data.examId, session);
 
-  try {
-    const exam = await prisma.exam.findUnique({ where: { id: examId } });
-    if (!exam) throw new Error("Exam not found");
-
-    if (session.user.role !== "admin" && exam.createdById !== session.user.id)
-      throw new Error("You do not have permission to modify this exam");
-
-    await prisma.examProctor.deleteMany({
-      where: { examId, proctorId },
+    const ids = [...new Set(parsed.data.proctorIds)];
+    const proctors = await prisma.user.findMany({
+      where: { id: { in: ids }, role: "proctor" },
+      select: { id: true },
     });
+    if (proctors.length === 0)
+      throw new ActionError("None of the selected users are proctors");
 
-    const basePath = session.user.role === "admin" ? "/admin" : "/examiner";
-    revalidatePath(`${basePath}/exams/${examId}/assign-proctor`);
-  } catch (e) {
-    if (e instanceof Error) throw e;
-    throw new Error("Failed to unassign proctor");
-  }
-};
+    const { count } = await prisma.examProctor.createMany({
+      data: proctors.map((p) => ({
+        examId: exam.id,
+        proctorId: p.id,
+        assignedById: session.user.id,
+      })),
+      skipDuplicates: true,
+    });
+    revalidateAssignPages(exam.id);
+    return { assigned: count, skipped: ids.length - count };
+  });
+
+export const unassignProctor = async (examId: string, proctorId: string) =>
+  runAction(async () => {
+    const session = await requireStaffSession("admin", "examiner");
+    const parsed = z.object({ examId: idSchema, proctorId: idSchema }).safeParse({
+      examId,
+      proctorId,
+    });
+    if (!parsed.success) throw new ActionError("Invalid request");
+    const exam = await assertCanManageExam(parsed.data.examId, session);
+    await prisma.examProctor.deleteMany({
+      where: { examId: exam.id, proctorId: parsed.data.proctorId },
+    });
+    revalidateAssignPages(exam.id);
+    return null;
+  });
 
 export const getAssignedProctors = async (examId: string) => {
-  const session = await auth.api.getSession({ headers: await headers() });
-  if (!session) redirect("/");
-
-  try {
-    return await prisma.examProctor.findMany({
-      where: { examId },
-      include: {
-        proctor: { select: { id: true, name: true, email: true } },
-      },
-      orderBy: { assignedAt: "desc" },
-    });
-  } catch {
-    throw new Error("Failed to fetch assigned proctors");
-  }
+  const session = await requireStaffSession("admin", "examiner");
+  const exam = await assertCanManageExam(examId, session);
+  return prisma.examProctor.findMany({
+    where: { examId: exam.id },
+    include: {
+      proctor: { select: { id: true, name: true, email: true } },
+    },
+    orderBy: { assignedAt: "desc" },
+  });
 };
 
 export const getAvailableProctors = async (examId: string) => {
-  const session = await auth.api.getSession({ headers: await headers() });
-  if (!session) redirect("/");
-
-  try {
-    const assigned = await prisma.examProctor.findMany({
-      where: { examId },
-      select: { proctorId: true },
-    });
-    const assignedIds = assigned.map((a) => a.proctorId);
-
-    return await prisma.user.findMany({
-      where: {
-        role: "proctor",
-        id: { notIn: assignedIds },
-      },
-      select: { id: true, name: true, email: true },
-      orderBy: { name: "asc" },
-    });
-  } catch {
-    throw new Error("Failed to fetch available proctors");
-  }
+  const session = await requireStaffSession("admin", "examiner");
+  const exam = await assertCanManageExam(examId, session);
+  const assigned = await prisma.examProctor.findMany({
+    where: { examId: exam.id },
+    select: { proctorId: true },
+  });
+  return prisma.user.findMany({
+    where: {
+      role: "proctor",
+      banned: { not: true },
+      id: { notIn: assigned.map((a) => a.proctorId) },
+    },
+    select: { id: true, name: true, email: true },
+    orderBy: { name: "asc" },
+  });
 };
 
 export const getProctorExams = async () => {
@@ -125,76 +122,10 @@ export const getProctorExams = async () => {
     });
 
     return proctorAssignments.map((pa) => ({
-      ...pa.exam,
+      ...withExamApiFields(pa.exam),
       proctorAssignedAt: pa.assignedAt,
     }));
   } catch {
     throw new Error("Failed to fetch proctor exams");
-  }
-};
-
-export const getExamProgress = async (examId: string) => {
-  const session = await auth.api.getSession({ headers: await headers() });
-  if (!session) redirect("/");
-  if (session.user.role !== "proctor") redirect("/");
-
-  try {
-    const isAssigned = await prisma.examProctor.findUnique({
-      where: { examId_proctorId: { examId, proctorId: session.user.id } },
-    });
-    if (!isAssigned) throw new Error("You are not assigned to this exam");
-
-    const exam = await prisma.exam.findUnique({
-      where: { id: examId },
-      select: { id: true, title: true, duration: true, status: true },
-    });
-
-    if (!exam) throw new Error("Exam not found");
-
-    const questionCount = await prisma.question.count({ where: { examId } });
-
-    const attempts = await prisma.examAttempt.findMany({
-      where: { examId },
-      include: {
-        user: { select: { id: true, name: true, email: true } },
-        _count: { select: { answers: true } },
-      },
-      orderBy: { startedAt: "asc" },
-    });
-
-    const totalAssigned = await prisma.examAssignment.count({
-      where: { examId },
-    });
-
-    const now = new Date();
-
-    return {
-      exam: {
-        id: exam.id,
-        title: exam.title,
-        duration: exam.duration,
-        status: exam.status,
-      },
-      questionCount,
-      totalAssigned,
-      attempts: attempts.map((a) => ({
-        id: a.id,
-        student: { id: a.user.id, name: a.user.name, email: a.user.email },
-        status: a.status,
-        startedAt: a.startedAt,
-        submittedAt: a.submittedAt,
-        answerCount: a._count.answers,
-        questionCount,
-        timeSpentMinutes:
-          a.submittedAt ?
-            Math.round(
-              (a.submittedAt.getTime() - a.startedAt.getTime()) / 60000,
-            )
-          : Math.round((now.getTime() - a.startedAt.getTime()) / 60000),
-      })),
-    };
-  } catch (e) {
-    if (e instanceof Error) throw e;
-    throw new Error("Failed to fetch exam progress");
   }
 };
