@@ -1,229 +1,385 @@
-<p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://img.shields.io/badge/open--exam--web-0a0a0a?style=for-the-badge&logo=nextdotjs&logoColor=white">
-    <img alt="open-exam-web" src="https://img.shields.io/badge/open--exam--web-ffffff?style=for-the-badge&logo=nextdotjs&logoColor=black">
-  </picture>
-</p>
+# Secure Examination Management System
 
-<p align="center">
-  <a href="https://github.com/MrSaikatS/open-exam-web/stargazers">
-    <img src="https://img.shields.io/github/stars/MrSaikatS/open-exam-web?style=for-the-badge&logo=github&color=gold" alt="GitHub Stars">
-  </a>
-  <a href="https://github.com/MrSaikatS/open-exam-web/issues">
-    <img src="https://img.shields.io/github/issues/MrSaikatS/open-exam-web?style=for-the-badge&logo=github" alt="GitHub Issues">
-  </a>
-  <a href="https://github.com/MrSaikatS/open-exam-web/blob/main/LICENSE">
-    <img src="https://img.shields.io/github/license/MrSaikatS/open-exam-web?style=for-the-badge&logo=github" alt="License">
-  </a>
-</p>
+A full-stack examination platform being developed for **Technoverse 5.0 – Web-e-Thon, COMSATS University Lahore**.
 
-<p align="center">
-  ⭐ If you find this project useful, consider giving it a star — it helps others discover it!
-</p>
+| Project | Details |
+| --- | --- |
+| Problem | Secure Examination Management System |
+| Architecture | Next.js modular monolith |
+| Language / package manager | TypeScript / npm |
+| Current database | Local SQLite through Prisma and the libSQL adapter |
+| Innovation direction | Failure-Resilient Examinations — Challenge 5.3 |
+| Current focus | Validate and strengthen Phase 01: Authentication and Authorization |
 
-A modern, role-based online examination platform built with Next.js 16. Supports **admin**, **examiner**, **proctor**, and **student** roles with a full exam lifecycle — creation, assignment, proctoring, taking, and auto-graded results.
+This repository builds on an existing examination starter application. Authentication, dashboards, exam management, assignments, monitoring, and automatic grading already have implementations. The roadmap below distinguishes that foundation from planned functionality; implementation presence does not mean a phase has passed end-to-end validation.
 
----
+## Project objective
 
-## 🧰 Tech Stack
+Build a secure, reliable, accessible platform for institutions and competition organizers that supports the complete examination lifecycle:
 
-| Layer               | Technology                                                                                                  |
-| ------------------- | ----------------------------------------------------------------------------------------------------------- |
-| **Framework**       | Next.js 16.2 (App Router, Turbopack, React Compiler)                                                        |
-| **React**           | 19.2, Server Components, `typedRoutes: true`                                                                |
-| **Styling**         | Tailwind v4 (`@theme` in CSS, no `tailwind.config.ts`), shadcn/ui `base-luma` (`@base-ui/react` primitives) |
-| **Database**        | SQLite via Prisma 7 + `@prisma/adapter-libsql`                                                              |
-| **Auth**            | Better Auth 1.6 (email/password, admin plugin, 4 roles)                                                     |
-| **Forms**           | react-hook-form + Zod (`@t3-oss/env-nextjs`)                                                                |
-| **Package Manager** | npm >=11                                                                                                    |
+- Authentication and role-based authorization
+- Examination configuration, scheduling, and publication
+- Reusable question banks and candidate enrollment
+- Examination delivery and monitoring
+- Automatic and manual grading
+- Controlled result publication and performance analytics
+- Recovery from network interruptions without granting additional examination time
 
-## ✅ Prerequisites
+Manual grading, controlled result publication, and failure-resilient answer synchronization are planned work, not completed features.
 
-- Node.js >=24 with npm >=11
-- SQLite (bundled via libsql, no separate install required)
+## Roles
 
-## 🚀 Getting Started
+| Role | Stored role | Responsibilities |
+| --- | --- | --- |
+| Administrator | `admin` | Manage users, platform access, exams, question banks, and results |
+| Examiner | `examiner` | Create and manage own exams, assign candidates and proctors, and review results |
+| Candidate | `student` | Access assigned exams, complete attempts, and view available results |
+| Proctor | `proctor` | Monitor assigned examinations and candidate progress |
 
-```bash
-git clone https://github.com/MrSaikatS/open-exam-web.git
-cd open-exam-web
+The existing Proctor role is retained. Candidate is the product term for the existing `student` role; routes and database values have not been renamed.
+
+## Technology stack
+
+| Layer | Current implementation |
+| --- | --- |
+| Framework | Next.js 16.2, App Router, Turbopack |
+| Frontend | React 19.2 with React Compiler |
+| Language | TypeScript with typed routes |
+| Styling | Tailwind CSS 4, CSS-based theme configuration |
+| UI | shadcn/ui with Base UI primitives |
+| Authentication | Better Auth 1.6 with database-backed sessions and cookies |
+| Password hashing | Argon2id through `@node-rs/argon2` |
+| Validation | Zod and `@t3-oss/env-nextjs` |
+| Forms | React Hook Form |
+| ORM | Prisma 7 |
+| Database | SQLite through `@prisma/adapter-libsql` |
+| Icons / dates | Lucide React / date-fns |
+| Themes / notifications | next-themes / React Toastify |
+| Image processing | Sharp |
+| Package manager | npm; lockfile committed |
+
+Use the compatible versions in [package.json](./package.json) and [package-lock.json](./package-lock.json). Custom JWT authentication with `jose` is not the current architecture: retain Better Auth as the single authentication system. Recharts is not installed; charting is a future choice if analytics requires it.
+
+## Architecture
+
+```text
+Browser: React UI and interactive client components
+                         |
+Next.js: Server Components, Server Actions, Route Handlers
+                         |
+          Session checks, authorization, validation
+                         |
+                  Prisma + libSQL adapter
+                         |
+                    Local SQLite
 ```
 
-### 📦 Install Dependencies
+- One Next.js application, one database, and one authentication system.
+- Server Components by default; Client Components for interactivity and browser APIs.
+- Reusable UI components and shared server-side business logic.
+- Route Handlers for HTTP endpoints and Server Actions for appropriate mutations.
+- Server-side authorization and input validation for sensitive operations.
+- No microservices or direct browser-to-database access.
+
+### Database configuration
+
+The schema uses the SQLite provider. The shared connection is in [dbClient.ts](./src/lib/database/dbClient.ts), and migration configuration is in [prisma.config.ts](./prisma.config.ts). The development URL is `file:./prisma/dev.db`.
+
+No third-party database API or cloud account is needed for local development. Current environment validation requires a `file:./` URL. Hosted database support is not configured. A later deployment may retain SQLite on persistent storage or introduce a compatible remote libSQL service; that requires explicit environment, adapter, migration, and deployment changes.
+
+Keep database files, credentials, dependencies, and generated output out of Git. Commit schema migrations and the npm lockfile.
+
+## Local setup
+
+### Prerequisites
+
+- Node.js 24 or later
+- npm 11 or later
+- Git
+
+SQLite is accessed through the installed libSQL dependencies; a separate database server is not required.
+
+### 1. Install dependencies
 
 ```bash
-npm install
+git clone https://github.com/MUNEEBAZAM96/Comsats_webathone.git
+cd Comsats_webathone
+npm ci
 ```
 
-### 🔐 Environment Variables
+### 2. Configure the environment
 
-Copy the example env file:
+Create a `.env` file in the project root with the following values. An `.env.example` file is not currently included.
 
-```bash
-cp .env.example .env
+```dotenv
+DATABASE_URL="file:./prisma/dev.db"
+BETTER_AUTH_SECRET="replace-with-a-generated-secret-at-least-32-characters-long"
+BETTER_AUTH_URL="http://localhost:3000"
+BETTER_AUTH_ALLOWED_ORIGINS="http://localhost:3000"
+BETTER_AUTH_TELEMETRY="0"
+CHECKPOINT_DISABLE="1"
+# Optional; defaults to admin@example.com
+BETTER_AUTH_SEED_ADMIN_EMAIL="admin@example.com"
 ```
 
-Edit `.env` with your values:
-
-| Variable                       | Description                                       | Default                 |
-| ------------------------------ | ------------------------------------------------- | ----------------------- |
-| `DATABASE_URL`                 | SQLite database path                              | `file:./prisma/dev.db`  |
-| `BETTER_AUTH_SECRET`           | Auth secret (generate: `openssl rand -base64 32`) | —                       |
-| `BETTER_AUTH_URL`              | Base URL of the app                               | `http://localhost:3000` |
-| `BETTER_AUTH_ALLOWED_ORIGINS`  | CORS origins (comma-separated)                    | `http://localhost:3000` |
-| `BETTER_AUTH_SEED_ADMIN_EMAIL` | Admin email used by seed script                   | `admin@example.com`     |
-| `BETTER_AUTH_TELEMETRY`        | Disable Better Auth telemetry                     | `0`                     |
-| `CHECKPOINT_DISABLE`           | Disable Prisma telemetry                          | `1`                     |
-
-### 🗄️ Database Setup
+Generate your own secret, for example with:
 
 ```bash
-# Run migrations and generate Prisma client
+openssl rand -base64 32
+```
+
+Replace the placeholder before running the application. Keep the secret stable: the current password hashing implementation also uses it as an Argon2 secret, so changing it affects verification of existing passwords. Never commit `.env`.
+
+### 3. Initialize and seed the database
+
+```bash
 npm run migrate
-
-# Seed with test data (4 users + 10 programming bank questions)
 npm run seed
 ```
 
-### 🏃 Run Development Server
+The migration script runs `prisma migrate dev` and generates the Prisma client. When introducing schema changes, it may prompt for a migration name. Use migrations instead of `prisma db push`.
+
+The seed creates four demo users and a Programming question-bank hierarchy with ten questions. It does not provide a complete assigned-exam demonstration scenario.
+
+### 4. Start the application
 
 ```bash
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000).
+Open [localhost:3000](http://localhost:3000).
 
-### 👥 Seed Users
+### Demo accounts
 
-After running `npm run seed`, you can log in with:
-
-| Role     | Email                  | Password               |
-| -------- | ---------------------- | ---------------------- |
-| Admin    | `admin@example.com`    | `admin@example.com`    |
+| Role | Email | Password |
+| --- | --- | --- |
+| Administrator | `admin@example.com` | `admin@example.com` |
 | Examiner | `examiner@example.com` | `examiner@example.com` |
-| Proctor  | `proctor@example.com`  | `proctor@example.com`  |
-| Student  | `student@example.com`  | `student@example.com`  |
+| Proctor | `proctor@example.com` | `proctor@example.com` |
+| Candidate | `student@example.com` | `student@example.com` |
 
-## 📜 Available Scripts
+These credentials are for fictional local/demo data only. If the administrator email is overridden, its seeded password is that email. Running the seed again resets the seeded account passwords.
 
-| Command         | Description                                                |
-| --------------- | ---------------------------------------------------------- |
-| `npm run dev`       | Start Turbopack dev server                                 |
-| `npm run build`     | Generate Prisma client + production build                  |
-| `npm run start`     | Start production server                                    |
-| `npm run lint`      | Run ESLint                                                 |
-| `npm run typecheck` | Run `tsc --noEmit`                                         |
-| `npm run prod`      | Full production pipeline (generate + lint + build + start) |
-| `npm run migrate`   | Run `prisma migrate dev` + generate client                 |
-| `npm run studio`    | Open Prisma Studio (headless — open the printed URL)       |
-| `npm run seed`      | Seed database with test data                               |
+## Development commands
 
-## ✨ Features
+| Command | Purpose |
+| --- | --- |
+| `npm run dev` | Start the development server |
+| `npm run typecheck` | Generate Next.js route types and run TypeScript without emitting files |
+| `npm run lint` | Run ESLint |
+| `npm run build` | Generate Prisma client and build for production |
+| `npm run start` | Start an existing production build |
+| `npm run prod` | Generate Prisma client, build, and start; does not run lint |
+| `npm run migrate` | Apply development migrations and generate Prisma client |
+| `npm run seed` | Seed demo users and bank questions |
+| `npm run studio` | Start Prisma Studio without automatically opening a browser |
 
-### 👤 Role-Based Access
+After significant changes, run:
 
-- **Admin** — Full access: create/manage exams, question bank, users, view all results
-- **Examiner** — Create and manage own exams, manage question bank (no delete), view own exam results
-- **Proctor** — Monitor live exam progress, view student attempt statuses
-- **Student** — View assigned exams, take exams (with auto-save & timer), view results
-
-### 🔄 Exam Lifecycle
-
-1. **Create** — Examiners/Admins create exams with title, duration, time window
-2. **Questions** — Build a question bank, then import questions into exams (copy-on-import)
-3. **Assign** — Assign exams to students
-4. **Proctor** — Proctors monitor student progress in real-time (2s polling)
-5. **Take** — Students take exams with auto-save, question navigation, and auto-submit on timer expiry. Time windows (`startTime`/`endTime`) are enforced server-side.
-6. **Grade** — Auto-grading for multiple choice, true/false, short answer (keyword-based)
-7. **Review** — Students and examiners can review results per-question
-
-### ❓ Question Types
-
-- **Single Choice** — Radio buttons, one correct answer
-- **Multiple Choice** — Checkboxes, multiple correct options joined with newline
-- **True/False** — Radio buttons with True/False options
-- **Short Answer** — Text input, graded by keyword matching
-
-## 📁 Project Structure
-
+```bash
+npm run lint
+npm run typecheck
+npm run build
 ```
+
+Successful checks do not replace role-based, timing, concurrency, or network-interruption testing.
+
+## Development roadmap
+
+Work through phases in order, reusing existing implementations and validating each phase before treating it as complete.
+
+### Phase 01 — Authentication and Authorization
+
+**Existing:** Better Auth registration/login integration, password hashing, database sessions, protected layouts, role-specific redirects, and role permissions.
+
+**Implement or validate:** Registration, login, logout, secure HttpOnly cookie behavior, session verification and expiry, server-side access checks, authentication forms, and error handling. Complete password-reset delivery if included in the demo; currently reset links are logged to the server console.
+
+**Deliverable:** Validated authentication and protected experiences for `admin`, `examiner`, `student`, and `proctor`.
+
+### Phase 02 — Application Layout and Dashboards
+
+**Existing:** Four role dashboards, shared sidebar/header, navigation configuration, profile menu, and summary cards.
+
+**Implement or refine:** Responsive application layout, role-specific navigation, accessible sidebar and mobile drawer, accurate header titles, profile/settings/sign-out menu, reusable dashboard components, and loading/empty/error states.
+
+| Dashboard | UI priority |
+| --- | --- |
+| Administrator | Platform metrics, user distribution, exam overview, recent activity |
+| Examiner | Own exams, preparation actions, draft/published overview, question-bank shortcuts |
+| Proctor | Assigned exams, candidate progress, direct monitoring access |
+| Candidate | Resume or available-exam action, upcoming exams, recent results |
+
+**Deliverable:** Distinct, working dashboards with a consistent visual system across mobile, tablet, and desktop. Display real available data and preserve existing authorization boundaries.
+
+### Phase 03 — Examination Management
+
+**Existing:** Exam creation/editing, deletion rules, description, schedule, duration, and publication.
+
+**Implement or validate:** Instructions, marks derived from questions, draft deletion, publication readiness, and a consistent lifecycle covering **DRAFT → PUBLISHED → ONGOING → COMPLETED**. The current persisted workflow primarily uses lowercase `draft` and `published`; the four-state lifecycle is a target.
+
+**Deliverable:** Complete examination administration workflow.
+
+### Phase 04 — Question Bank
+
+**Existing:** Subject → Topic → BankQuestion hierarchy, single-choice/multiple-choice/true-false/short-answer questions, points, editing, and copy-based import into exams.
+
+**Implement or validate:** Difficulty levels, written-response requirements, marking schemes, randomization, and stable question/answer-choice ordering. Preserve questions and marking schemes for active attempts. Bank-to-exam copying already creates exam copies; immutable per-attempt snapshots need explicit validation/design.
+
+**Deliverable:** Reusable question bank and reliable exam question management.
+
+### Phase 05 — Candidate Management
+
+**Existing:** User administration, exam assignments, student exam listings, and assignment/time-window checks.
+
+**Implement or validate:** Candidate registration and management, enrollment, eligibility, and available/upcoming/completed exam views.
+
+**Deliverable:** Complete candidate management workflow.
+
+### Phase 06 — Examination Workspace
+
+**Existing:** Question navigation, countdown, answer saving, answered indicators, submission confirmation, and client-triggered submission at timer expiry.
+
+**Implement or validate:** Mark for review, clear save status, refresh recovery, consistent submission handling, and a countdown aligned with the server deadline. The server already checks duration and exam end time when saving; the client countdown still needs alignment with that effective deadline.
+
+**Deliverable:** Functional exam-taking experience with deadlines controlled by the server independently of the candidate device clock.
+
+### Phase 07 — Failure-Resilient Examinations
+
+**Innovation Challenge 5.3 — planned.**
+
+Implement network connectivity detection, IndexedDB persistence, a local answer queue, automatic synchronization, retry handling, explicit conflict handling, refresh recovery, server-controlled deadlines, and clear synchronization status.
+
+Persist unsynchronized changes locally and distinguish saved-on-device from acknowledged-by-server answers. Define and test the policy for unsynchronized answers at expiry; a client timestamp alone must not authorize late writes or additional time.
+
+**Deliverable:** Recoverable examination workflow under network interruptions without extending examination time. Current autosave alone does not meet this requirement.
+
+### Phase 08 — Monitoring and Announcements
+
+**Existing:** Proctor assignments, candidate progress, attempt statuses, and polling-based monitoring.
+
+**Implement or validate:** Active monitoring, incident recording, examiner announcements, and monitoring dashboards. Monitoring indicators must not be treated as conclusive proof of misconduct.
+
+**Deliverable:** Authorized examination monitoring and communication.
+
+### Phase 09 — Grading and Results
+
+**Existing:** Automatic grading, score calculation, and role-scoped result views.
+
+**Implement or validate:** Explicit multiple-select marking rules, manual written-response grading, examiner review, controlled result publication, candidate access, and examination analytics.
+
+Current choice grading compares normalized answer text; short answers use keyword matching. Students can view submitted results without a separate examiner publication step. These behaviors need refinement to meet this phase.
+
+**Deliverable:** Complete evaluation and controlled results workflow.
+
+### Phase 10 — Secondary Features
+
+Implement and integrate all eight required features:
+
+1. Network-aware interface
+2. PDF report generation
+3. Examination sandbox
+4. Bulk candidate/question import
+5. Question analytics
+6. Verifiable reports
+7. Customizable examination workspace
+8. Digital scratchpad
+
+**Deliverable:** Working secondary functionality, not placeholder controls. The complete feature set is not currently implemented.
+
+### Phase 11 — Security and Testing
+
+Verify server-side authorization, Zod input validation, password security, answer-key protection, duplicate-submission handling, deadlines, data integrity, and recoverable errors. Test all roles, unauthorized direct action calls, concurrent saves/submissions, refreshes, clock changes, and network interruptions.
+
+Review assignment/proctor lookup authorization as well as page-level protection. No automated project test suite has been identified in the current repository.
+
+**Deliverable:** Tested, reliable application with documented verification results.
+
+### Phase 12 — Deployment and Demonstration
+
+Prepare production builds, persistent database configuration, upload storage, deployment, fictional exam data, test accounts, documentation, and a repeatable demonstration workflow. Current avatars are written to the local filesystem, which also needs a deployment storage decision.
+
+**Deliverable:** Deployed application ready for the competition. Deployment is not yet verified. Required features must remain usable without paid APIs, paid keys, or billing-required services, following the competition rules.
+
+## Current development status
+
+| Phase | Source-code status |
+| --- | --- |
+| 01 — Authentication | Foundation implemented; validation and hardening required |
+| 02 — Dashboards | Existing UI; refinement and responsive verification pending |
+| 03 — Examination management | Partial; full lifecycle pending |
+| 04 — Question bank | Partial; difficulty/randomization and snapshot validation pending |
+| 05 — Candidate management | Foundation implemented; workflow validation pending |
+| 06 — Examination workspace | Partial; review markers and timer/save reliability work pending |
+| 07 — Failure resilience | Planned |
+| 08 — Monitoring | Partial; incidents and announcements pending |
+| 09 — Grading and results | Partial; manual grading and result publication pending |
+| 10 — Secondary features | Planned; complete set not implemented |
+| 11 — Security and testing | Safeguards exist; systematic verification pending |
+| 12 — Deployment | Scripts and seed data exist; deployment unverified |
+
+**Current focus: validate Phase 01 before advancing through the roadmap.** Existing later-phase code is a foundation to assess and improve, not evidence that those phases are complete.
+
+## Project structure
+
+```text
+prisma/
+  schema.prisma             Database models
+  migrations/               Versioned SQL migrations
+  seed.ts                   Demo users and question bank
 src/
-├── app/                    # Next.js App Router pages
-│   └── (private)/          # Authenticated layout (gated by middleware)
-│       ├── admin/          # Admin dashboard, exams, questions, results, users
-│       ├── examiner/       # Examiner dashboard, exams, questions, results
-│       ├── proctor/        # Proctor dashboard (exam monitoring)
-│       └── student/        # Student dashboard, exams (take), results
-├── components/
-│   ├── Dashboard/          # StatCard, DashboardShellSkeleton
-│   ├── Examiner/           # ExaminerShellSkeleton
-│   ├── Exam/               # ExamForm, ExamsTable, QuestionsManager
-│   ├── Proctor/            # ProctorExamMonitor (live polling)
-│   ├── Results/            # StatusBadge, PctBadge
-│   ├── Student/            # ExamPlayer, QuestionCard, ResultReview, ExamStatusBadge, AttemptBadge
-│   └── shadcnui/           # shadcn/ui primitives
-├── hooks/                  # Custom React hooks
-├── lib/
-│   ├── env/                # T3 env validation (serverEnv, clientEnv)
-│   ├── database/           # Prisma singleton (dbClient.ts)
-│   ├── auth.ts             # Better Auth server config
-│   ├── auth-client.ts      # Better Auth client config
-│   └── zodSchema.ts        # All Zod schemas and inferred types
-└── server/actions/         # Server actions (exam, bank, studentExam, assignment, proctor, results)
+  app/
+    api/auth/[...all]/       Better Auth HTTP handler
+    (public)/               Login, registration, password reset pages
+    (private)/
+      admin/                Administration dashboard and workflows
+      examiner/             Examiner dashboard and workflows
+      proctor/              Assigned-exam monitoring and results
+      student/              Candidate exams and results
+      settings/             Shared authenticated account settings
+  components/               Shared and role-specific UI
+    shadcnui/               Base UI-backed primitives
+  hooks/                    React hooks
+  lib/
+    auth.ts                 Better Auth server configuration
+    auth-client.ts          Authentication client
+    auth/permissions.ts     Role permission definitions
+    database/dbClient.ts    Shared Prisma client
+    env/                    Environment validation
+    zodSchema.ts            Form/input schemas
+  server/                   Business operations and Server Actions
+generated/prisma/           Generated client; excluded from Git
 ```
 
-## 🗄️ Database Models (10)
+## Development rules
 
-- **User** — Core user with role (`admin`, `examiner`, `proctor`, `student`)
-- **Session / Account / Verification** — Better Auth authentication tables
-- **Exam** — Exam metadata (title, duration, time window, status)
-- **BankQuestion** — Reusable question bank (created by examiners/admins)
-- **Question** — Exam-specific copy of a bank question (snapshot on import)
-- **ExamAssignment** — Student-exam assignments
-- **ExamProctor** — Proctor-exam assignments
-- **ExamAttempt** — Student attempt tracking (status, scores, timestamps)
-- **Answer** — Per-question student answer with auto-score
+1. Complete and validate one phase at a time; reuse working starter code.
+2. Follow [AGENTS.md](./AGENTS.md) and read the relevant installed Next.js documentation before framework changes.
+3. Keep documentation synchronized with implementation and distinguish planned features from working ones.
+4. Use npm and preserve the lockfile; avoid unnecessary dependencies.
+5. Keep credentials, answer keys, and sensitive operations on the server.
+6. Enforce authorization on every sensitive server operation, not only in navigation or layouts.
+7. Validate incoming inputs with Zod and keep business logic separate from UI.
+8. Use shared UI components and accessible responsive layouts; do not leave nonfunctional placeholders.
+9. Use migrations for schema changes and the shared Prisma singleton for application queries.
+10. Run lint, typecheck, and build after significant changes; add meaningful workflow/security tests.
+11. Demonstrate with fictional data and follow the competition submission deadline.
 
-## 🔧 Prisma
+### Existing question-storage conventions
 
-- Schema: `prisma/schema.prisma`
-- Client output: `generated/prisma/` (gitignored)
-- Import: `import { PrismaClient } from "@generated/prisma/client"`
-- Singleton: `src/lib/database/dbClient.ts`
-- No `datasource.url` in schema — URL injected via `prisma.config.ts` from env
+- Options are newline-separated plain text, not JSON.
+- Multiple-select responses join selected option text with newlines.
+- Current objective grading compares normalized strings; define improved multi-select rules before changing storage or grading.
+- Short-answer grading currently uses comma-separated keywords.
+- Importing from the bank copies question fields into the exam; it does not retain a bank foreign key.
 
-## 📐 Key Conventions
+See [schema.prisma](./prisma/schema.prisma) and [studentExamActions.ts](./src/server/studentExamActions.ts) for the current implementation.
 
-- Question options/answers stored as **newline-separated text** (not JSON)
-- Multiple choice student answers: option texts joined with `\n`
-- Short answer grading: comma-separated keywords with proportional scoring
-- Exam time windows (`startTime`/`endTime`) enforced server-side in `startExam` and `saveAnswer`
-- Server actions in `src/server/actions/` — each file is `"use server"` with session + ownership checks
-- Exam questions use **bank-first approach**: import copies from bank, edit/delete on exam copy only
-- All date work uses `date-fns` (`format`, `isAfter`, `isBefore`) — avoid native `Date` operators and `toLocaleDateString`
-- Form pattern: react-hook-form + `Controller` + Zod resolver + shadcn `Field`/`Input`
+## Demonstration preparation
 
-## 🤝 Contributing
+After seeding, use the Administrator or Examiner account to create an exam, import bank questions, assign the Candidate and Proctor, configure an available time window, and publish it. Sign in as the Candidate to complete an attempt and as the Proctor to inspect progress. Review the resulting scores with the appropriate role.
 
-We welcome contributions! Here's how you can help:
+This is a preparation checklist, not a claim of completed end-to-end testing. Extend it with offline recovery, manual grading, publication, and report verification as those phases are implemented.
 
-1. 🍴 Fork the repository
-2. 🌿 Create a feature branch: `git checkout -b feat/amazing-feature`
-3. 💻 Make your changes
-4. ✅ Run typecheck and lint: `npm run typecheck && npm run lint`
-5. 📝 Commit using [conventional commits](https://www.conventionalcommits.org/)
-6. 🚀 Open a Pull Request
+## Attribution and license
 
-Check the [issues page](https://github.com/MrSaikatS/open-exam-web/issues) for bugs or feature requests.
-
-## ⭐ Support
-
-If you find this project helpful, please give it a ⭐ on GitHub — it helps others find it and motivates us to keep improving!
-
----
-
-<p align="center">
-  Made with ❤️ by <a href="https://github.com/MrSaikatS">Saikat Sardar</a>
-  <br>
-  ⭐ Star · 🐛 Report Bug · 💡 Suggest Feature
-</p>
+Built on [open-exam-web](https://github.com/MrSaikatS/open-exam-web) by Saikat Sardar and adapted for this competition project. The starter code is licensed under the [MIT License](./LICENSE); its copyright notice is preserved.
