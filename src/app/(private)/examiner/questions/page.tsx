@@ -13,6 +13,8 @@ export const metadata: Metadata = {
   description: "Browse subjects in the question bank",
 };
 
+export const instant = false;
+
 const ExaminerQuestionBankPage = async () => {
   await requireRole("examiner");
   const subjects = await getSubjects();

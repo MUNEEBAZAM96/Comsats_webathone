@@ -18,6 +18,8 @@ export const metadata: Metadata = {
   description: "Browse topics in a subject",
 };
 
+export const instant = false;
+
 const AdminSubjectTopicsPage = async ({
   params,
 }: {

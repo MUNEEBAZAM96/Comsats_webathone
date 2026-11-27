@@ -13,6 +13,8 @@ export const metadata: Metadata = {
   description: "Bank questions in a topic",
 };
 
+export const instant = false;
+
 const questionTypes: Record<string, string> = {
   multiple_choice: "Multiple Choice",
   single_choice: "Single Choice",

@@ -15,6 +15,9 @@ export const metadata: Metadata = {
   description: "Browse subjects in the question bank",
 };
 
+// This route reads the request-bound Better Auth session before loading data.
+export const instant = false;
+
 const AdminQuestionBankPage = async () => {
   await requireRole("admin");
   const subjects = await getSubjects();

@@ -11,6 +11,9 @@ export const metadata: Metadata = {
   description: "Manage all exams",
 };
 
+// The page reads the request-bound Better Auth session and live exam data.
+export const instant = false;
+
 const AdminExamsPage = async () => {
   await requireRole("admin");
   const exams = await getExams();

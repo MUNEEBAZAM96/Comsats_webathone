@@ -16,6 +16,8 @@ export const metadata: Metadata = {
   description: "Create a new bank question",
 };
 
+export const instant = false;
+
 const NewBankQuestionPage = async ({
   params,
 }: {
