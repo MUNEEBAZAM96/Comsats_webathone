@@ -5,7 +5,10 @@ import { ArrowLeftIcon, BarChart3Icon } from "lucide-react";
 import { Button } from "@/components/shadcnui/button";
 import { StatusBadge } from "@/components/Results/StatusBadge";
 import { PctBadge } from "@/components/Results/PctBadge";
+import { ExamAnalyticsCharts } from "@/features/analytics/components/ExamAnalyticsCharts";
 import { getExamResults } from "@/server/resultsActions";
+import { loadExamAnalytics } from "@/server/analyticsActions";
+import { ExportResultsButtons } from "@/features/exports/components/ExportResultsButtons";
 
 export const metadata: Metadata = {
   title: "Exam Results",
@@ -19,6 +22,7 @@ const AdminExamResultsPage = async ({
 }) => {
   const { id } = await params;
   const data = await getExamResults(id);
+  const analytics = await loadExamAnalytics(id);
 
   const scores = data.attempts.map((a) => a.totalScore ?? a.autoScore ?? 0);
   const avgScore =
@@ -45,6 +49,10 @@ const AdminExamResultsPage = async ({
         </Link>
         <h1 className="text-2xl font-medium">{data.examTitle}</h1>
       </div>
+
+      <ExportResultsButtons examId={id} />
+
+      <ExamAnalyticsCharts data={analytics} />
 
       <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
         <div className="border-border rounded-2xl border p-4">

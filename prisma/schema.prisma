@@ -29,6 +29,7 @@ model User {
   examProctors             ExamProctor[]      @relation("ProctorExams")
   createdProctorAssignments ExamProctor[]      @relation("CreatedProctorAssignments")
   examAttempts             ExamAttempt[]
+  publishedReports         ReportVerification[] @relation("PublishedReports")
 
   @@unique([email])
   @@map("user")
@@ -291,4 +292,44 @@ model Answer {
   @@index([questionId])
   @@index([attemptQuestionId])
   @@map("answer")
+}
+
+/// Publicly verifiable published report metadata (no PII / answers in QR payload).
+model ReportVerification {
+  id            String   @id @default(uuid())
+  /// candidate_result | exam_summary
+  type          String
+  examId        String?
+  attemptId     String?
+  /// SHA-256 hex of canonical non-PII report payload (server-computed)
+  contentHash   String
+  /// Public-safe fields for verification page (JSON): examTitle, score, maxScore, pct, publishedAt
+  publicMeta    String
+  publishedById String
+  publishedBy   User     @relation("PublishedReports", fields: [publishedById], references: [id])
+  publishedAt   DateTime @default(now())
+  revokedAt     DateTime?
+
+  @@index([examId])
+  @@index([attemptId])
+  @@index([contentHash])
+  @@map("report_verification")
+}
+
+model ImportJob {
+  id          String   @id @default(uuid())
+  /// candidates | bank_questions | exam_results_export (audit)
+  kind        String
+  status      String   @default("completed")
+  fileName    String?
+  rowCount    Int      @default(0)
+  validCount  Int      @default(0)
+  errorCount  Int      @default(0)
+  createdById String
+  summary     String?
+  createdAt   DateTime @default(now())
+
+  @@index([createdById])
+  @@index([kind])
+  @@map("import_job")
 }

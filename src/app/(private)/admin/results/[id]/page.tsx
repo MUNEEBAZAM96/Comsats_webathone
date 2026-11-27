@@ -4,6 +4,7 @@ import { ArrowLeftIcon } from "lucide-react";
 import { Button } from "@/components/shadcnui/button";
 import { getResultDetail } from "@/server/resultsActions";
 import { ResultReview } from "@/components/Student/ResultReview";
+import { PublishResultReportButton } from "@/features/reports/components/PublishResultReportButton";
 
 export const metadata: Metadata = {
   title: "Result Details",
@@ -35,6 +36,8 @@ const AdminResultDetailPage = async ({
           </p>
         </div>
       </div>
+
+      <PublishResultReportButton attemptId={data.id} />
 
       <ResultReview
         autoScore={data.autoScore}

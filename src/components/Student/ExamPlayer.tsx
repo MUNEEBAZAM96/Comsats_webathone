@@ -35,6 +35,13 @@ import {
   SheetTrigger,
 } from "../shadcnui/sheet";
 import { QuestionCard } from "./QuestionCard";
+import { DigitalScratchpad } from "@/features/scratchpad/components/DigitalScratchpad";
+import { OfflineSyncBanner } from "@/features/exam-workspace/offline/OfflineSyncBanner";
+import {
+  clearAttemptAnswers,
+  markAnswerSynced,
+  upsertLocalAnswer,
+} from "@/features/exam-workspace/offline/answer-storage";
 
 type Question = {
   id: string;
@@ -106,16 +113,28 @@ export const ExamPlayer = ({
         if ((acknowledgedRef.current[id] ?? "") === text) return;
         setPendingSaves((count) => count + 1);
         try {
+          const local = await upsertLocalAnswer({
+            attemptId,
+            questionId: id,
+            text,
+          });
           const { saveAnswer: sendAnswer } =
             await import("@/server/studentExamActions");
           await sendAnswer(attemptId, id, text);
+          await markAnswerSynced(local.id);
           acknowledgedRef.current = { ...acknowledgedRef.current, [id]: text };
           setAcknowledged(acknowledgedRef.current);
+          setSaveFailed(false);
+        } catch (error) {
+          setSaveFailed(true);
+          throw error;
         } finally {
           setPendingSaves((count) => count - 1);
         }
       });
-      saveQueue.current = write.catch(() => setSaveFailed(true));
+      saveQueue.current = write.catch(() => {
+        setSaveFailed(true);
+      });
       return write;
     },
     [attemptId],
@@ -129,15 +148,20 @@ export const ExamPlayer = ({
       setSubmitting(true);
       setSubmitError("");
       try {
-        await saveQueue.current;
-        if (!expired) {
-          await Promise.all(
-            Object.entries(answersRef.current).map(([id, text]) =>
-              saveAnswer(id, text),
-            ),
-          );
-        }
+        await saveQueue.current.catch(() => undefined);
+        // Always flush UI state — including timer auto-submit — so debounced
+        // edits are not dropped when the exam window closes.
+        await Promise.all(
+          Object.entries(answersRef.current).map(([id, text]) =>
+            saveAnswer(id, text).catch(() => undefined),
+          ),
+        );
         await submitExam(attemptId);
+        try {
+          await clearAttemptAnswers(attemptId);
+        } catch {
+          // Local cleanup is best-effort; server submit already succeeded.
+        }
         router.push(`/student/results/${attemptId}`);
       } catch {
         setSubmitError(
@@ -328,6 +352,15 @@ export const ExamPlayer = ({
             />
           </div>
 
+          <OfflineSyncBanner
+            attemptId={attemptId}
+            saveAnswer={async (aid, qid, text) => {
+              const { saveAnswer: sendAnswer } =
+                await import("@/server/studentExamActions");
+              await sendAnswer(aid, qid, text);
+            }}
+          />
+
           {submitError && (
             <p
               role="alert"
@@ -365,6 +398,8 @@ export const ExamPlayer = ({
               This examination has no questions.
             </p>
           )}
+
+          <DigitalScratchpad attemptId={attemptId} />
 
           <div className="flex flex-wrap items-center gap-2">
             {currentQuestion && (
