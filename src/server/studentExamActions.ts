@@ -70,6 +70,58 @@ export const getStudentExams = async () => {
   }
 };
 
+/** Create AttemptQuestion rows if an in-progress attempt has none (recovery). */
+const ensureAttemptSnapshots = async (
+  attemptId: string,
+  exam: {
+    id: string;
+    shuffleQuestions: boolean;
+    shuffleOptions: boolean;
+  },
+) => {
+  const existingCount = await prisma.attemptQuestion.count({
+    where: { attemptId },
+  });
+  if (existingCount > 0) return;
+
+  const questions = await prisma.question.findMany({
+    where: { examId: exam.id },
+    orderBy: { order: "asc" },
+  });
+  if (questions.length === 0) return;
+
+  const ordered = exam.shuffleQuestions ? shuffleArray(questions) : questions;
+
+  await prisma.attemptQuestion.createMany({
+    data: ordered.map((q, index) => {
+      let optionOrder: string | null = null;
+      if (
+        exam.shuffleOptions &&
+        (q.type === "multiple_choice" ||
+          q.type === "single_choice" ||
+          q.type === "true_false")
+      ) {
+        const opts = splitLines(q.options);
+        if (opts.length > 1) optionOrder = shuffleArray(opts).join("\n");
+      }
+      return {
+        attemptId,
+        sourceQuestionId: q.id,
+        text: q.text,
+        type: q.type,
+        options: q.options,
+        answer: q.answer,
+        points: q.points,
+        order: index,
+        difficulty: q.difficulty,
+        markingScheme: q.markingScheme,
+        optionOrder,
+      };
+    }),
+    skipDuplicates: true,
+  });
+};
+
 export const startExam = async (examId: string) => {
   const session = await getStudentSession();
 
@@ -106,11 +158,15 @@ export const startExam = async (examId: string) => {
           exam.status === "completed" || effective === "completed";
 
         if (windowClosed || isAfter(now, effectiveDeadline)) {
+          await ensureAttemptSnapshots(existing.id, exam);
           await submitAttempt(existing.id);
           return await prisma.examAttempt.findUnique({
             where: { id: existing.id },
           });
         }
+
+        // Recover missing snapshots so resume does not fail later.
+        await ensureAttemptSnapshots(existing.id, exam);
       }
       return existing;
     }
@@ -129,23 +185,19 @@ export const startExam = async (examId: string) => {
       throw new Error("This exam is not open for attempts yet");
     }
 
-    const totalPoints = await prisma.question.aggregate({
-      where: { examId },
-      _sum: { points: true },
-    });
-
     const attempt = await prisma.$transaction(async (tx) => {
+      const questions = await tx.question.findMany({
+        where: { examId },
+        orderBy: { order: "asc" },
+      });
+      const maxScore = questions.reduce((sum, q) => sum + q.points, 0);
+
       const created = await tx.examAttempt.create({
         data: {
           userId: session.user.id,
           examId,
-          maxScore: totalPoints._sum.points ?? 0,
+          maxScore,
         },
-      });
-
-      const questions = await tx.question.findMany({
-        where: { examId },
-        orderBy: { order: "asc" },
       });
 
       const ordered =
@@ -212,12 +264,20 @@ export const getAttemptQuestions = async (attemptId: string) => {
   if (attempt.status !== "in_progress")
     return { attempt, questions: [] as never[], answers: [] as never[] };
 
-  const snapshots = await prisma.attemptQuestion.findMany({
+  let snapshots = await prisma.attemptQuestion.findMany({
     where: { attemptId },
     orderBy: { order: "asc" },
   });
 
-  // Fail closed: every in-progress attempt must have snapshots after Phase 04.
+  if (snapshots.length === 0) {
+    const examRow = await prisma.exam.findUnique({ where: { id: attempt.examId } });
+    if (examRow) await ensureAttemptSnapshots(attemptId, examRow);
+    snapshots = await prisma.attemptQuestion.findMany({
+      where: { attemptId },
+      orderBy: { order: "asc" },
+    });
+  }
+
   if (snapshots.length === 0) {
     throw new Error("Exam question snapshots are missing for this attempt");
   }
@@ -343,6 +403,7 @@ const submitAttempt = async (attemptId: string) => {
       const answerMap = new Map(answers.map((a) => [a.questionId, a]));
 
       let autoScore = 0;
+      const maxScore = snapshots.reduce((sum, s) => sum + s.points, 0);
       for (const snap of snapshots) {
         const answer = answerMap.get(snap.sourceQuestionId);
         const text = answer?.text ?? "";
@@ -369,6 +430,7 @@ const submitAttempt = async (attemptId: string) => {
           submittedAt: new Date(),
           autoScore,
           totalScore: autoScore,
+          maxScore,
         },
       });
     },

@@ -616,12 +616,14 @@ export const importRandomBankQuestions = async (
       conditions.push(Prisma.sql`bq."difficulty" = ${parsed.difficulty}`);
     if (parsed.type) conditions.push(Prisma.sql`bq."type" = ${parsed.type}`);
 
-    // Exclude bank questions whose text+type already exist on this exam
+    // Exclude only exact copies already on the exam (text+type+options+answer)
     conditions.push(Prisma.sql`NOT EXISTS (
       SELECT 1 FROM "question" q
       WHERE q."examId" = ${examId}
         AND q."text" = bq."text"
         AND q."type" = bq."type"
+        AND COALESCE(q."options", '') = COALESCE(bq."options", '')
+        AND COALESCE(q."answer", '') = COALESCE(bq."answer", '')
     )`);
 
     const whereSql =
@@ -645,6 +647,8 @@ export const importRandomBankQuestions = async (
       examId,
       rows.map((r) => r.id),
     );
+
+    return { imported: rows.length };
   } catch (e) {
     if (e instanceof Error) throw e;
     throw new Error("Failed to randomly import bank questions");

@@ -330,13 +330,15 @@ const ImportBankDialog = ({ examId }: { examId: string }) => {
     }
     setLoading(true);
     try {
-      await importRandomBankQuestions(examId, {
+      const result = await importRandomBankQuestions(examId, {
         count,
         subjectId: subjectId || undefined,
         topicId: topicId || undefined,
         difficulty: difficulty || undefined,
       });
-      toast.success(`Imported up to ${count} random question(s)`);
+      toast.success(
+        `Imported ${result?.imported ?? count} random question(s)`,
+      );
       setOpen(false);
     } catch (e) {
       toast.error(

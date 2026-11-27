@@ -203,6 +203,7 @@ export const getResultDetail = async (attemptId: string) => {
       exam: { ...attempt.exam, questions },
     };
   } catch (e) {
+    if (e && typeof e === "object" && "digest" in e) throw e;
     if (e instanceof Error) throw e;
     throw new Error("Failed to fetch result details");
   }
