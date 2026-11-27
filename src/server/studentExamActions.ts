@@ -7,6 +7,15 @@ import { redirect } from "next/navigation";
 import { addMinutes, isAfter, isBefore, min } from "date-fns";
 import { auth } from "@/lib/auth";
 import prisma from "@/lib/database/dbClient";
+import { autoGrade } from "@/lib/exam/grading";
+import {
+  canStartExamAttempt,
+  getEffectiveExamStatus,
+  syncExamLifecycle,
+  withExamApiFields,
+} from "@/lib/exam/lifecycle";
+import { shuffleArray, splitLines } from "@/lib/exam/markingScheme";
+
 const getStudentSession = async () => {
   const session = await auth.api.getSession({ headers: await headers() });
   if (!session || session.user.role !== "student") redirect("/");
@@ -45,11 +54,17 @@ export const getStudentExams = async () => {
     });
 
     const attemptMap = new Map(attempts.map((a) => [a.examId, a]));
+    const now = new Date();
 
-    return assignments.map(({ exam }) => ({
-      ...exam,
-      attempt: attemptMap.get(exam.id) ?? null,
-    }));
+    return await Promise.all(
+      assignments.map(async ({ exam }) => {
+        const synced = await syncExamLifecycle(exam, now);
+        return {
+          ...withExamApiFields(synced, now),
+          attempt: attemptMap.get(exam.id) ?? null,
+        };
+      }),
+    );
   } catch {
     throw new Error("Failed to fetch exams");
   }
@@ -65,9 +80,12 @@ export const startExam = async (examId: string) => {
     });
 
     if (!assignment) throw new Error("You are not assigned to this exam");
-    if (assignment.exam.status !== "published")
-      throw new Error("This exam is not available");
 
+    const now = new Date();
+    const exam = await syncExamLifecycle(assignment.exam, now);
+    const effective = getEffectiveExamStatus(exam, now);
+
+    // Resume / finalize existing attempts even after the exam auto-completes.
     const existing = await prisma.examAttempt.findUnique({
       where: { userId_examId: { userId: session.user.id, examId } },
       include: { exam: { select: { endTime: true, duration: true } } },
@@ -84,8 +102,11 @@ export const startExam = async (examId: string) => {
             min([existing.exam.endTime, durationDeadline])
           : durationDeadline;
 
-        if (isAfter(new Date(), effectiveDeadline)) {
-          await submitAttempt(existing.id, examId);
+        const windowClosed =
+          exam.status === "completed" || effective === "completed";
+
+        if (windowClosed || isAfter(now, effectiveDeadline)) {
+          await submitAttempt(existing.id);
           return await prisma.examAttempt.findUnique({
             where: { id: existing.id },
           });
@@ -94,23 +115,74 @@ export const startExam = async (examId: string) => {
       return existing;
     }
 
-    const now = new Date();
-    if (assignment.exam.startTime && isBefore(now, assignment.exam.startTime))
-      throw new Error("This exam has not started yet");
-    if (assignment.exam.endTime && isAfter(now, assignment.exam.endTime))
+    if (exam.status === "draft" || effective === "draft")
+      throw new Error("This exam is not available");
+    if (exam.status === "completed" || effective === "completed")
       throw new Error("This exam has ended");
+
+    // New attempts only while effectiveStatus is ongoing (window open).
+    if (!canStartExamAttempt(exam, now)) {
+      if (exam.startTime && isBefore(now, exam.startTime))
+        throw new Error("This exam has not started yet");
+      if (exam.endTime && isAfter(now, exam.endTime))
+        throw new Error("This exam has ended");
+      throw new Error("This exam is not open for attempts yet");
+    }
 
     const totalPoints = await prisma.question.aggregate({
       where: { examId },
       _sum: { points: true },
     });
 
-    const attempt = await prisma.examAttempt.create({
-      data: {
-        userId: session.user.id,
-        examId,
-        maxScore: totalPoints._sum.points ?? 0,
-      },
+    const attempt = await prisma.$transaction(async (tx) => {
+      const created = await tx.examAttempt.create({
+        data: {
+          userId: session.user.id,
+          examId,
+          maxScore: totalPoints._sum.points ?? 0,
+        },
+      });
+
+      const questions = await tx.question.findMany({
+        where: { examId },
+        orderBy: { order: "asc" },
+      });
+
+      const ordered =
+        exam.shuffleQuestions ? shuffleArray(questions) : questions;
+
+      await tx.attemptQuestion.createMany({
+        data: ordered.map((q, index) => {
+          let optionOrder: string | null = null;
+          if (
+            exam.shuffleOptions &&
+            (q.type === "multiple_choice" ||
+              q.type === "single_choice" ||
+              q.type === "true_false")
+          ) {
+            const opts = splitLines(q.options);
+            if (opts.length > 1) {
+              optionOrder = shuffleArray(opts).join("\n");
+            }
+          }
+
+          return {
+            attemptId: created.id,
+            sourceQuestionId: q.id,
+            text: q.text,
+            type: q.type,
+            options: q.options,
+            answer: q.answer,
+            points: q.points,
+            order: index,
+            difficulty: q.difficulty,
+            markingScheme: q.markingScheme,
+            optionOrder,
+          };
+        }),
+      });
+
+      return created;
     });
 
     return attempt;
@@ -140,19 +212,28 @@ export const getAttemptQuestions = async (attemptId: string) => {
   if (attempt.status !== "in_progress")
     return { attempt, questions: [] as never[], answers: [] as never[] };
 
-  const questions = await prisma.question.findMany({
-    where: { examId: attempt.examId },
+  const snapshots = await prisma.attemptQuestion.findMany({
+    where: { attemptId },
     orderBy: { order: "asc" },
-    select: {
-      id: true,
-      examId: true,
-      text: true,
-      type: true,
-      options: true,
-      points: true,
-      order: true,
-    },
   });
+
+  // Fail closed: every in-progress attempt must have snapshots after Phase 04.
+  if (snapshots.length === 0) {
+    throw new Error("Exam question snapshots are missing for this attempt");
+  }
+
+  // Strip answer keys / marking schemes. id = sourceQuestionId for Answer FK + UI compat.
+  const questions = snapshots.map((s) => ({
+    id: s.sourceQuestionId,
+    attemptQuestionId: s.id,
+    examId: attempt.examId,
+    text: s.text,
+    type: s.type,
+    options: s.optionOrder ?? s.options,
+    points: s.points,
+    order: s.order,
+    difficulty: s.difficulty,
+  }));
 
   const answers = await prisma.answer.findMany({
     where: { attemptId },
@@ -171,30 +252,45 @@ export const saveAnswer = async (
   try {
     const attempt = await prisma.examAttempt.findUnique({
       where: { id: attemptId },
-      include: { exam: { select: { endTime: true, duration: true } } },
+      include: {
+        exam: {
+          select: {
+            id: true,
+            status: true,
+            startTime: true,
+            endTime: true,
+            duration: true,
+            totalMarks: true,
+          },
+        },
+      },
     });
     if (!attempt || attempt.userId !== session.user.id)
       throw new Error("Unauthorized");
     if (attempt.status !== "in_progress")
       throw new Error("Exam already submitted");
 
-    const durationDeadline = addMinutes(
-      attempt.startedAt,
-      attempt.exam.duration,
-    );
-    const effectiveDeadline =
-      attempt.exam.endTime ?
-        min([attempt.exam.endTime, durationDeadline])
-      : durationDeadline;
+    const now = new Date();
+    const exam = await syncExamLifecycle(attempt.exam, now);
+    if (exam.status === "completed" || exam.status === "draft")
+      throw new Error("This exam is no longer accepting answers");
 
-    if (isAfter(new Date(), effectiveDeadline))
+    const durationDeadline = addMinutes(attempt.startedAt, exam.duration);
+    const effectiveDeadline =
+      exam.endTime ? min([exam.endTime, durationDeadline]) : durationDeadline;
+
+    if (isAfter(now, effectiveDeadline))
       throw new Error("The exam time has expired");
 
-    const question = await prisma.question.findUnique({
-      where: { id: questionId },
+    const snapshot = await prisma.attemptQuestion.findUnique({
+      where: {
+        attemptId_sourceQuestionId: {
+          attemptId,
+          sourceQuestionId: questionId,
+        },
+      },
     });
-    if (!question || question.examId !== attempt.examId)
-      throw new Error("Question not found");
+    if (!snapshot) throw new Error("Question not found");
 
     await prisma.$transaction(async (tx) => {
       const current = await tx.examAttempt.findUnique({
@@ -206,8 +302,13 @@ export const saveAnswer = async (
 
       await tx.answer.upsert({
         where: { attemptId_questionId: { attemptId, questionId } },
-        create: { attemptId, questionId, text },
-        update: { text },
+        create: {
+          attemptId,
+          questionId,
+          attemptQuestionId: snapshot.id,
+          text,
+        },
+        update: { text, attemptQuestionId: snapshot.id },
       });
     });
   } catch (e) {
@@ -216,40 +317,7 @@ export const saveAnswer = async (
   }
 };
 
-const autoGrade = (
-  text: string,
-  question: { type: string; answer: string | null; points: number },
-): number => {
-  if (!text || !question.answer) return 0;
-
-  const normalize = (s: string) => s.trim().toLowerCase().replace(/\s+/g, " ");
-
-  switch (question.type) {
-    case "multiple_choice":
-    case "single_choice":
-    case "true_false":
-      return normalize(text) === normalize(question.answer) ?
-          question.points
-        : 0;
-
-    case "short_answer": {
-      const keywords = question.answer
-        .split(",")
-        .map((k) => k.trim().toLowerCase());
-      const normalizedText = normalize(text);
-      const matchCount = keywords.filter((kw) =>
-        normalizedText.includes(kw),
-      ).length;
-      if (matchCount === 0) return 0;
-      return Math.round((question.points * matchCount) / keywords.length);
-    }
-
-    default:
-      return 0;
-  }
-};
-
-const submitAttempt = async (attemptId: string, examId: string) => {
+const submitAttempt = async (attemptId: string) => {
   await prisma.$transaction(
     async (tx) => {
       const current = await tx.examAttempt.findUnique({
@@ -259,10 +327,14 @@ const submitAttempt = async (attemptId: string, examId: string) => {
       if (!current || current.status !== "in_progress")
         throw new Error("Exam already submitted");
 
-      const questions = await tx.question.findMany({
-        where: { examId },
+      const snapshots = await tx.attemptQuestion.findMany({
+        where: { attemptId },
         orderBy: { order: "asc" },
       });
+
+      if (snapshots.length === 0) {
+        throw new Error("Exam question snapshots are missing for this attempt");
+      }
 
       const answers = await tx.answer.findMany({
         where: { attemptId },
@@ -271,16 +343,21 @@ const submitAttempt = async (attemptId: string, examId: string) => {
       const answerMap = new Map(answers.map((a) => [a.questionId, a]));
 
       let autoScore = 0;
-      for (const question of questions) {
-        const answer = answerMap.get(question.id);
+      for (const snap of snapshots) {
+        const answer = answerMap.get(snap.sourceQuestionId);
         const text = answer?.text ?? "";
-        const score = autoGrade(text, question);
+        const score = autoGrade(text, {
+          type: snap.type,
+          answer: snap.answer,
+          points: snap.points,
+          markingScheme: snap.markingScheme,
+        });
         autoScore += score;
 
         if (answer) {
           await tx.answer.update({
             where: { id: answer.id },
-            data: { score },
+            data: { score, attemptQuestionId: snap.id },
           });
         }
       }
@@ -313,7 +390,10 @@ export const submitExam = async (attemptId: string) => {
     if (attempt.status !== "in_progress")
       throw new Error("Exam already submitted");
 
-    await submitAttempt(attemptId, attempt.examId);
+    // Sync lifecycle; still allow final submit so in-flight work is graded.
+    await syncExamLifecycle(attempt.exam);
+
+    await submitAttempt(attemptId);
 
     revalidatePath("/student/exams");
     revalidatePath(`/student/exams/${attempt.examId}`);
@@ -358,6 +438,7 @@ export const getResultDetail = async (attemptId: string) => {
           },
         },
         answers: true,
+        questions: { orderBy: { order: "asc" } },
       },
     });
   } catch {
@@ -369,5 +450,23 @@ export const getResultDetail = async (attemptId: string) => {
 
   if (attempt.status !== "submitted") redirect("/student/exams");
 
-  return attempt;
+  if (attempt.questions.length === 0) {
+    throw new Error("Exam question snapshots are missing for this attempt");
+  }
+
+  // Prefer attempt snapshots for review (frozen text/answer/points/order).
+  const questions = attempt.questions.map((s) => ({
+    id: s.sourceQuestionId,
+    text: s.text,
+    type: s.type,
+    options: s.optionOrder ?? s.options,
+    answer: s.answer,
+    points: s.points,
+    order: s.order,
+    difficulty: s.difficulty,
+  }));
+  return {
+    ...attempt,
+    exam: { ...attempt.exam, questions },
+  };
 };

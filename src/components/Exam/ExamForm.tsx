@@ -35,9 +35,12 @@ const ExamForm = ({
     defaultValues: {
       title: defaultValues?.title ?? "",
       description: defaultValues?.description ?? "",
+      instructions: defaultValues?.instructions ?? "",
       duration: defaultValues?.duration ?? 60,
       startTime: defaultValues?.startTime ?? "",
       endTime: defaultValues?.endTime ?? "",
+      shuffleQuestions: defaultValues?.shuffleQuestions ?? false,
+      shuffleOptions: defaultValues?.shuffleOptions ?? false,
     },
     mode: "all",
   });
@@ -46,9 +49,12 @@ const ExamForm = ({
     const fd = new FormData();
     fd.set("title", data.title);
     fd.set("description", data.description ?? "");
+    fd.set("instructions", data.instructions ?? "");
     fd.set("duration", String(data.duration));
     fd.set("startTime", data.startTime ?? "");
     fd.set("endTime", data.endTime ?? "");
+    fd.set("shuffleQuestions", String(data.shuffleQuestions ?? false));
+    fd.set("shuffleOptions", String(data.shuffleOptions ?? false));
     try {
       const result = await action(fd);
       if (result && "id" in result) {
@@ -91,6 +97,24 @@ const ExamForm = ({
               {...field}
               id={field.name}
               placeholder="Enter exam description (optional)"
+              aria-invalid={fieldState.invalid}
+              className="h-24"
+            />
+            {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
+          </Field>
+        )}
+      />
+
+      <Controller
+        name="instructions"
+        control={control}
+        render={({ field, fieldState }) => (
+          <Field data-invalid={fieldState.invalid}>
+            <FieldLabel htmlFor={field.name}>Instructions</FieldLabel>
+            <Textarea
+              {...field}
+              id={field.name}
+              placeholder="Exam instructions shown to students (optional)"
               aria-invalid={fieldState.invalid}
               className="h-24"
             />
@@ -153,6 +177,39 @@ const ExamForm = ({
           </Field>
         )}
       />
+
+      <div className="grid gap-3">
+        <Controller
+          name="shuffleQuestions"
+          control={control}
+          render={({ field }) => (
+            <label className="flex items-center gap-3 text-sm">
+              <input
+                type="checkbox"
+                checked={!!field.value}
+                onChange={(e) => field.onChange(e.target.checked)}
+                className="accent-primary size-4"
+              />
+              Shuffle question order per student
+            </label>
+          )}
+        />
+        <Controller
+          name="shuffleOptions"
+          control={control}
+          render={({ field }) => (
+            <label className="flex items-center gap-3 text-sm">
+              <input
+                type="checkbox"
+                checked={!!field.value}
+                onChange={(e) => field.onChange(e.target.checked)}
+                className="accent-primary size-4"
+              />
+              Shuffle answer options per student
+            </label>
+          )}
+        />
+      </div>
 
       <Button
         className="w-fit"

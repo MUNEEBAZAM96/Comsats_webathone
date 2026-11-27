@@ -85,22 +85,30 @@ model Verification {
 }
 
 model Exam {
-  id          String     @id @default(uuid())
-  title       String
-  description String?
-  duration    Int
-  startTime   DateTime?
-  endTime     DateTime?
-  status      String     @default("draft")
-  createdById String
-  createdBy   User       @relation("CreatedExams", fields: [createdById], references: [id])
-  createdAt   DateTime   @default(now())
-  updatedAt   DateTime   @updatedAt
+  id           String    @id @default(uuid())
+  title        String
+  description  String?
+  instructions String?
+  duration     Int
+  startTime    DateTime?
+  endTime      DateTime?
+  /// Stored: draft | published | completed. Never store "ongoing".
+  status       String    @default("draft")
+  /// Snapshot of SUM(question.points); kept in sync on draft edits and publish.
+  totalMarks   Int       @default(0)
+  /// Per-attempt shuffle of question order at startExam.
+  shuffleQuestions Boolean @default(false)
+  /// Per-attempt shuffle of choice option display order at startExam.
+  shuffleOptions   Boolean @default(false)
+  createdById  String
+  createdBy    User      @relation("CreatedExams", fields: [createdById], references: [id])
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
 
-  questions    Question[]
-  assignments  ExamAssignment[]
-  proctors     ExamProctor[]
-  attempts     ExamAttempt[]
+  questions   Question[]
+  assignments ExamAssignment[]
+  proctors    ExamProctor[]
+  attempts    ExamAttempt[]
 
   @@index([createdById])
   @@map("exam")
@@ -169,38 +177,48 @@ model Topic {
 }
 
 model BankQuestion {
-  id          String   @id @default(uuid())
-  text        String
-  type        String   @default("multiple_choice")
-  options     String?
-  answer      String?
-  points      Int      @default(1)
-  topicId     String
-  topic       Topic    @relation(fields: [topicId], references: [id], onDelete: Restrict)
-  createdById String
-  createdBy   User     @relation(fields: [createdById], references: [id])
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id            String   @id @default(uuid())
+  text          String
+  type          String   @default("multiple_choice")
+  options       String?
+  answer        String?
+  points        Int      @default(1)
+  /// easy | medium | hard
+  difficulty    String   @default("medium")
+  /// JSON marking scheme (see src/lib/exam/markingScheme.ts)
+  markingScheme String?
+  topicId       String
+  topic         Topic    @relation(fields: [topicId], references: [id], onDelete: Restrict)
+  createdById   String
+  createdBy     User     @relation(fields: [createdById], references: [id])
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
   @@index([createdById])
   @@index([topicId])
+  @@index([difficulty])
   @@map("bank_question")
 }
 
 model Question {
-  id        String   @id @default(uuid())
-  examId    String
-  exam      Exam     @relation(fields: [examId], references: [id], onDelete: Cascade)
-  text      String
-  type      String   @default("multiple_choice")
-  options   String?
-  answer    String?
-  points    Int      @default(1)
-  order     Int      @default(0)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id            String   @id @default(uuid())
+  examId        String
+  exam          Exam     @relation(fields: [examId], references: [id], onDelete: Cascade)
+  text          String
+  type          String   @default("multiple_choice")
+  options       String?
+  answer        String?
+  points        Int      @default(1)
+  order         Int      @default(0)
+  /// easy | medium | hard (copied from bank on import)
+  difficulty    String   @default("medium")
+  /// JSON marking scheme snapshot from bank / editor
+  markingScheme String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
-  answers Answer[]
+  answers           Answer[]
+  attemptQuestions  AttemptQuestion[]
 
   @@index([examId])
   @@map("question")
@@ -217,9 +235,10 @@ model ExamAttempt {
   totalScore  Int?
   maxScore    Int       @default(0)
 
-  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  exam    Exam     @relation(fields: [examId], references: [id], onDelete: Cascade)
-  answers Answer[]
+  user      User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  exam      Exam              @relation(fields: [examId], references: [id], onDelete: Cascade)
+  answers   Answer[]
+  questions AttemptQuestion[]
 
   @@unique([userId, examId])
   @@index([examId])
@@ -227,18 +246,49 @@ model ExamAttempt {
   @@map("exam_attempt")
 }
 
-model Answer {
-  id         String  @id @default(uuid())
-  attemptId  String
-  questionId String
-  text       String?
-  score      Int?
+/// Frozen copy of an exam Question at attempt start. Grading uses these rows only.
+model AttemptQuestion {
+  id               String   @id @default(uuid())
+  attemptId        String
+  attempt          ExamAttempt @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  /// Exam Question.id at snapshot time (informational / dual-write Answer.questionId)
+  sourceQuestionId String
+  sourceQuestion   Question @relation(fields: [sourceQuestionId], references: [id], onDelete: Restrict)
+  text             String
+  type             String
+  options          String?
+  answer           String?
+  points           Int      @default(1)
+  order            Int      @default(0)
+  difficulty       String   @default("medium")
+  markingScheme    String?
+  /// Display order of options when shuffleOptions is on (newline-separated texts)
+  optionOrder      String?
+  createdAt        DateTime @default(now())
 
-  attempt  ExamAttempt @relation(fields: [attemptId], references: [id], onDelete: Cascade)
-  question Question    @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  answers Answer[]
+
+  @@unique([attemptId, sourceQuestionId])
+  @@index([attemptId])
+  @@index([sourceQuestionId])
+  @@map("attempt_question")
+}
+
+model Answer {
+  id                String  @id @default(uuid())
+  attemptId         String
+  questionId        String
+  attemptQuestionId String?
+  text              String?
+  score             Int?
+
+  attempt         ExamAttempt      @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  question        Question         @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  attemptQuestion AttemptQuestion? @relation(fields: [attemptQuestionId], references: [id], onDelete: SetNull)
 
   @@unique([attemptId, questionId])
   @@index([attemptId])
   @@index([questionId])
+  @@index([attemptQuestionId])
   @@map("answer")
 }

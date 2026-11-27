@@ -13,12 +13,13 @@ import { toast } from "sonner";
 import { Button } from "../shadcnui/button";
 import { Field, FieldError, FieldLabel } from "../shadcnui/field";
 import { Input } from "../shadcnui/input";
+import { Textarea } from "../shadcnui/textarea";
 
 const questionTypes = [
-  { value: "multiple_choice", label: "Multiple Choice" },
-  { value: "single_choice", label: "Single Choice" },
+  { value: "multiple_choice", label: "Multiple Select" },
+  { value: "single_choice", label: "Single Answer" },
   { value: "true_false", label: "True / False" },
-  { value: "short_answer", label: "Short Answer" },
+  { value: "short_answer", label: "Written Response" },
 ];
 
 export type BankHierarchyItem = {
@@ -68,6 +69,9 @@ const BankQuestionForm = ({
       options: defaultValues?.options ?? "",
       answer: defaultValues?.answer ?? "",
       points: defaultValues?.points ?? 1,
+      difficulty:
+        (defaultValues?.difficulty as BankQuestionFormType["difficulty"]) ??
+        "medium",
       topicId: defaultValues?.topicId ?? hierarchy[0]?.topics[0]?.id ?? "",
     },
     mode: "all",
@@ -100,6 +104,7 @@ const BankQuestionForm = ({
     fd.set("options", data.options ?? "");
     fd.set("answer", data.answer ?? "");
     fd.set("points", String(data.points));
+    fd.set("difficulty", data.difficulty ?? "medium");
     fd.set("topicId", data.topicId);
     try {
       await action(fd);
@@ -136,7 +141,7 @@ const BankQuestionForm = ({
       noValidate>
       <div className="grid grid-cols-2 gap-4">
         <Field>
-          <FieldLabel htmlFor="subjectId">Subject</FieldLabel>
+          <FieldLabel htmlFor="subjectId">Category</FieldLabel>
           <select
             id="subjectId"
             value={selectedSubjectId}
@@ -201,7 +206,7 @@ const BankQuestionForm = ({
         )}
       />
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-3 gap-4">
         <Controller
           name="type"
           control={control}
@@ -220,6 +225,26 @@ const BankQuestionForm = ({
                     {t.label}
                   </option>
                 ))}
+              </select>
+              {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
+            </Field>
+          )}
+        />
+
+        <Controller
+          name="difficulty"
+          control={control}
+          render={({ field, fieldState }) => (
+            <Field data-invalid={fieldState.invalid}>
+              <FieldLabel htmlFor={field.name}>Difficulty</FieldLabel>
+              <select
+                {...field}
+                id={field.name}
+                aria-invalid={fieldState.invalid}
+                className="bg-input/50 focus-visible:border-ring focus-visible:ring-ring/30 aria-invalid:border-destructive aria-invalid:ring-destructive/20 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 h-9 w-full min-w-0 rounded-3xl border border-transparent px-3 py-1 text-sm transition-[color,box-shadow,background-color] outline-none focus-visible:ring-3 aria-invalid:ring-3">
+                <option value="easy">Easy</option>
+                <option value="medium">Medium</option>
+                <option value="hard">Hard</option>
               </select>
               {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
             </Field>
@@ -273,12 +298,17 @@ const BankQuestionForm = ({
         control={control}
         render={({ field, fieldState }) => (
           <Field data-invalid={fieldState.invalid}>
-            <FieldLabel htmlFor={field.name}>Correct Answer</FieldLabel>
-            <Input
+            <FieldLabel htmlFor={field.name}>
+              Correct Answer (multi-select: one option per line; written:
+              comma-separated keywords)
+            </FieldLabel>
+            <Textarea
               {...field}
               id={field.name}
-              placeholder="Enter the correct answer"
+              rows={3}
+              placeholder="Correct option text(s) or keywords"
               aria-invalid={fieldState.invalid}
+              className="bg-input/50 placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-ring/30 h-24 w-full min-w-0 resize-y rounded-3xl border border-transparent px-3 py-2 text-sm outline-none focus-visible:ring-3"
             />
             {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
           </Field>

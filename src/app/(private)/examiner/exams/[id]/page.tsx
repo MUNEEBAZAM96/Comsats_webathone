@@ -60,9 +60,12 @@ const ExaminerExamDetailPage = async ({
             defaultValues={{
               title: exam.title,
               description: exam.description ?? "",
+              instructions: exam.instructions ?? "",
               duration: exam.duration,
               startTime: formatDate(exam.startTime),
               endTime: formatDate(exam.endTime),
+              shuffleQuestions: exam.shuffleQuestions,
+              shuffleOptions: exam.shuffleOptions,
             }}
             submitLabel="Update Exam"
           />

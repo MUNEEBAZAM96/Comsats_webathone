@@ -1,0 +1,57 @@
+---
+description: Question bank taxonomy, marking schemes, snapshots, grading, randomization
+globs: src/server/bankActions.ts,src/server/examActions.ts,src/server/studentExamActions.ts,src/lib/exam/**/*.ts,prisma/schema.prisma
+alwaysApply: false
+---
+
+# Question bank (Phase 04)
+
+Subject **is** the category. Taxonomy: **Subject → Topic → BankQuestion**. Do not add a parallel Category model.
+
+## Types ↔ product names
+
+| Stored `type` | Product label |
+| --- | --- |
+| `single_choice` / `true_false` | Single-answer |
+| `multiple_choice` | Multiple-select |
+| `short_answer` | Written-response |
+
+Options remain **newline-separated** plain text on bank + exam + attempt rows.
+
+## Difficulty
+
+`easy` | `medium` | `hard` on `BankQuestion` and `Question` (copied on import). Default `medium`.
+
+## Marking scheme
+
+JSON string in `markingScheme` (`src/lib/exam/markingScheme.ts`). `answer` kept for backward compat:
+- choice: canonical correct option text(s); multi = sorted unique lines joined by `\n`
+- short_answer: comma-separated keywords
+
+Modes: `exact` | `all_of` | `any_of` | `keywords_partial` | `manual` (`manual` → autoGrade 0).
+
+### Multi-select partial credit (chosen)
+
+- `partialCredit: false` → full points only if selected set equals correct set; any extra → 0
+- `partialCredit: true` (default) → `round(points * |intersection| / |correct|)`; extras ignored
+
+### Short answer
+
+Prefer `markingScheme.keywords`; else legacy comma-separated `answer`.
+
+## Import snapshot vs attempt snapshot
+
+- **Import** (`importBankQuestions` / `importRandomBankQuestions`): copies bank → exam `Question` (no FK). Draft only; refreshes `totalMarks`.
+- **Attempt** (`AttemptQuestion`): frozen at `startExam`. Grading + student serving use these only. Never mutate snapshots when editing bank/exam.
+
+## Randomization
+
+`Exam.shuffleQuestions` / `shuffleOptions` (draft-editable). At start: shuffle question order into `AttemptQuestion.order`; shuffle display options into `optionOrder`. Grade by option **text**, not index.
+
+## Immutability
+
+Exam question mutate / import: **draft** and **zero attempts**. Attempt snapshots are immutable.
+
+## Student payloads
+
+`getAttemptQuestions` strips `answer` and `markingScheme`. Returns `id = sourceQuestionId` for Answer FK / UI compat; display `options = optionOrder ?? options`.

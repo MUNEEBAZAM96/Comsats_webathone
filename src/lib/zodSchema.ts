@@ -66,6 +66,14 @@ export const resetPasswordSchema = z
 
 export type ResetPasswordFormType = z.infer<typeof resetPasswordSchema>;
 
+const formBoolean = z.preprocess((v) => {
+  if (v === true || v === "true" || v === "on" || v === "1") return true;
+  if (v === false || v === "false" || v === "off" || v === "0" || v === "")
+    return false;
+  if (v === undefined || v === null) return false;
+  return v;
+}, z.boolean());
+
 export const examFormSchema = z
   .object({
     title: z
@@ -79,6 +87,12 @@ export const examFormSchema = z
       .max(2000, { error: "Description must not exceed 2000 characters" })
       .optional()
       .or(z.literal("")),
+    instructions: z
+      .string()
+      .trim()
+      .max(10000, { error: "Instructions must not exceed 10000 characters" })
+      .optional()
+      .or(z.literal("")),
     duration: z.coerce
       .number({ error: "Duration must be a number" })
       .int({ error: "Duration must be a whole number" })
@@ -86,6 +100,8 @@ export const examFormSchema = z
       .max(1440, { error: "Duration must not exceed 1440 minutes" }),
     startTime: z.string().optional().or(z.literal("")),
     endTime: z.string().optional().or(z.literal("")),
+    shuffleQuestions: formBoolean.optional().default(false),
+    shuffleOptions: formBoolean.optional().default(false),
   })
   .refine(
     (data) => {
@@ -117,6 +133,14 @@ export const questionFormSchema = z
       .int({ error: "Points must be a whole number" })
       .min(0, { error: "Points must be at least 0" })
       .max(999, { error: "Points must not exceed 999" }),
+    difficulty: z
+      .enum(["easy", "medium", "hard"], {
+        error: "Difficulty must be easy, medium, or hard",
+      })
+      .optional()
+      .default("medium"),
+    markingScheme: z.string().optional().or(z.literal("")),
+    partialCredit: formBoolean.optional(),
   })
   .refine(
     (data) => {
@@ -130,6 +154,26 @@ export const questionFormSchema = z
       path: ["options"],
     },
   );
+
+export const randomImportSchema = z.object({
+  count: z.coerce
+    .number({ error: "Count must be a number" })
+    .int()
+    .min(1, { error: "Count must be at least 1" })
+    .max(100, { error: "Count must not exceed 100" }),
+  subjectId: z.string().optional().or(z.literal("")),
+  topicId: z.string().optional().or(z.literal("")),
+  difficulty: z
+    .enum(["easy", "medium", "hard"])
+    .optional()
+    .or(z.literal("")),
+  type: z
+    .enum(["multiple_choice", "single_choice", "true_false", "short_answer"])
+    .optional()
+    .or(z.literal("")),
+});
+
+export type RandomImportType = z.infer<typeof randomImportSchema>;
 
 export type QuestionFormType = z.infer<typeof questionFormSchema>;
 

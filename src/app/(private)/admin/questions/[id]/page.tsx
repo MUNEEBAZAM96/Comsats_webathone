@@ -59,6 +59,7 @@ const EditBankQuestionPage = async ({
           options: question.options ?? "",
           answer: question.answer ?? "",
           points: question.points,
+          difficulty: (question.difficulty as "easy" | "medium" | "hard") ?? "medium",
           topicId: question.topicId,
           subjectId: question.topic.subjectId,
         }}

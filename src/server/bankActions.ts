@@ -5,7 +5,13 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import prisma from "@/lib/database/dbClient";
-import { bankQuestionFormSchema } from "@/lib/zodSchema";
+import { refreshExamTotalMarks } from "@/lib/exam/lifecycle";
+import { buildQuestionGradingFields } from "@/lib/exam/markingScheme";
+import {
+  bankQuestionFormSchema,
+  randomImportSchema,
+} from "@/lib/zodSchema";
+import { Prisma } from "@generated/prisma/client";
 
 const requireExaminer = async () => {
   const session = await auth.api.getSession({ headers: await headers() });
@@ -374,13 +380,22 @@ export const createBankQuestion = async (formData: FormData) => {
     });
     if (!topic) throw new Error("Topic not found");
 
+    const grading = buildQuestionGradingFields({
+      type: parsed.type,
+      answer: parsed.answer,
+      markingSchemeJson: parsed.markingScheme || null,
+      partialCredit: parsed.partialCredit,
+    });
+
     await prisma.bankQuestion.create({
       data: {
         text: parsed.text,
         type: parsed.type,
         options: parsed.options || null,
-        answer: parsed.answer,
+        answer: grading.answer,
         points: parsed.points,
+        difficulty: parsed.difficulty ?? "medium",
+        markingScheme: grading.markingScheme,
         topicId: parsed.topicId,
         createdById: session.user.id,
       },
@@ -406,6 +421,12 @@ export const updateBankQuestion = async (id: string, formData: FormData) => {
     const question = await prisma.bankQuestion.findUnique({ where: { id } });
     if (!question) throw new Error("Bank question not found");
 
+    if (
+      session.user.role !== "admin" &&
+      question.createdById !== session.user.id
+    )
+      throw new Error("You can only edit bank questions you created");
+
     const parsed = bankQuestionFormSchema.parse(Object.fromEntries(formData));
 
     const topic = await prisma.topic.findUnique({
@@ -413,14 +434,23 @@ export const updateBankQuestion = async (id: string, formData: FormData) => {
     });
     if (!topic) throw new Error("Topic not found");
 
+    const grading = buildQuestionGradingFields({
+      type: parsed.type,
+      answer: parsed.answer,
+      markingSchemeJson: parsed.markingScheme || null,
+      partialCredit: parsed.partialCredit,
+    });
+
     await prisma.bankQuestion.update({
       where: { id },
       data: {
         text: parsed.text,
         type: parsed.type,
         options: parsed.options || null,
-        answer: parsed.answer,
+        answer: grading.answer,
         points: parsed.points,
+        difficulty: parsed.difficulty ?? "medium",
+        markingScheme: grading.markingScheme,
         topicId: parsed.topicId,
       },
     });
@@ -472,14 +502,19 @@ export const importBankQuestions = async (
   const session = await requireExaminer();
 
   try {
-    const exam = await prisma.exam.findUnique({ where: { id: examId } });
+    const exam = await prisma.exam.findUnique({
+      where: { id: examId },
+      include: { _count: { select: { attempts: true } } },
+    });
     if (!exam) throw new Error("Exam not found");
 
     if (session.user.role !== "admin" && exam.createdById !== session.user.id)
       throw new Error("You do not have permission to modify this exam");
 
     if (exam.status !== "draft")
-      throw new Error("Cannot modify a published exam");
+      throw new Error("Questions can only be imported into draft exams");
+    if (exam._count.attempts > 0)
+      throw new Error("Cannot modify questions on an exam with attempts");
 
     const bankQuestions = await prisma.bankQuestion.findMany({
       where: { id: { in: questionIds } },
@@ -506,6 +541,8 @@ export const importBankQuestions = async (
                 options: q.options,
                 answer: q.answer,
                 points: q.points,
+                difficulty: q.difficulty,
+                markingScheme: q.markingScheme,
                 order: order++,
               })),
             });
@@ -530,10 +567,86 @@ export const importBankQuestions = async (
     }
     if (lastError) throw lastError;
 
+    await refreshExamTotalMarks(examId);
+
     const basePath = basePathFor(session.user.role);
     revalidatePath(`${basePath}/exams/${examId}`);
   } catch (e) {
     if (e instanceof Error) throw e;
     throw new Error("Failed to import bank questions");
+  }
+};
+
+export const importRandomBankQuestions = async (
+  examId: string,
+  input: {
+    count: number;
+    subjectId?: string;
+    topicId?: string;
+    difficulty?: string;
+    type?: string;
+  },
+) => {
+  const session = await requireExaminer();
+
+  try {
+    const parsed = randomImportSchema.parse(input);
+    const exam = await prisma.exam.findUnique({
+      where: { id: examId },
+      include: { _count: { select: { attempts: true } } },
+    });
+    if (!exam) throw new Error("Exam not found");
+
+    if (session.user.role !== "admin" && exam.createdById !== session.user.id)
+      throw new Error("You do not have permission to modify this exam");
+
+    if (exam.status !== "draft")
+      throw new Error("Questions can only be imported into draft exams");
+    if (exam._count.attempts > 0)
+      throw new Error("Cannot modify questions on an exam with attempts");
+
+    const conditions: Prisma.Sql[] = [];
+    if (parsed.topicId)
+      conditions.push(Prisma.sql`bq."topicId" = ${parsed.topicId}`);
+    if (parsed.subjectId)
+      conditions.push(
+        Prisma.sql`t."subjectId" = ${parsed.subjectId}`,
+      );
+    if (parsed.difficulty)
+      conditions.push(Prisma.sql`bq."difficulty" = ${parsed.difficulty}`);
+    if (parsed.type) conditions.push(Prisma.sql`bq."type" = ${parsed.type}`);
+
+    // Exclude bank questions whose text+type already exist on this exam
+    conditions.push(Prisma.sql`NOT EXISTS (
+      SELECT 1 FROM "question" q
+      WHERE q."examId" = ${examId}
+        AND q."text" = bq."text"
+        AND q."type" = bq."type"
+    )`);
+
+    const whereSql =
+      conditions.length > 0 ?
+        Prisma.sql`WHERE ${Prisma.join(conditions, " AND ")}`
+      : Prisma.empty;
+
+    const rows = await prisma.$queryRaw<{ id: string }[]>`
+      SELECT bq."id"
+      FROM "bank_question" bq
+      JOIN "topic" t ON t."id" = bq."topicId"
+      ${whereSql}
+      ORDER BY RANDOM()
+      LIMIT ${parsed.count}
+    `;
+
+    if (rows.length === 0)
+      throw new Error("No matching bank questions available to import");
+
+    await importBankQuestions(
+      examId,
+      rows.map((r) => r.id),
+    );
+  } catch (e) {
+    if (e instanceof Error) throw e;
+    throw new Error("Failed to randomly import bank questions");
   }
 };

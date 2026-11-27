@@ -215,17 +215,13 @@ Work through phases in order, reusing existing implementations and validating ea
 
 ### Phase 03 — Examination Management
 
-**Existing:** Exam creation/editing, deletion rules, description, schedule, duration, and publication.
-
-**Implement or validate:** Instructions, marks derived from questions, draft deletion, publication readiness, and a consistent lifecycle covering **DRAFT → PUBLISHED → ONGOING → COMPLETED**. The current persisted workflow primarily uses lowercase `draft` and `published`; the four-state lifecycle is a target.
+**Done:** Instructions, `totalMarks`, draft-only edits, safer delete policy, publish guards, `completeExam`, and stored `draft|published|completed` with derived `ongoing` (`src/lib/exam/lifecycle.ts`).
 
 **Deliverable:** Complete examination administration workflow.
 
 ### Phase 04 — Question Bank
 
-**Existing:** Subject → Topic → BankQuestion hierarchy, single-choice/multiple-choice/true-false/short-answer questions, points, editing, and copy-based import into exams.
-
-**Implement or validate:** Difficulty levels, written-response requirements, marking schemes, randomization, and stable question/answer-choice ordering. Preserve questions and marking schemes for active attempts. Bank-to-exam copying already creates exam copies; immutable per-attempt snapshots need explicit validation/design.
+**Done:** Difficulty, marking schemes, multi-select set grading, shuffle flags, random bank import, and `AttemptQuestion` snapshots for serving/grading active attempts.
 
 **Deliverable:** Reusable question bank and reliable exam question management.
 
@@ -371,11 +367,13 @@ generated/prisma/           Generated client; excluded from Git
 
 - Options are newline-separated plain text, not JSON.
 - Multiple-select responses join selected option text with newlines.
-- Current objective grading compares normalized strings; define improved multi-select rules before changing storage or grading.
-- Short-answer grading currently uses comma-separated keywords.
+- Multi-select grading uses set equality with optional partial credit (`src/lib/exam/grading.ts`).
+- Short-answer grading uses marking-scheme keywords (legacy: comma-separated `answer`).
 - Importing from the bank copies question fields into the exam; it does not retain a bank foreign key.
+- `startExam` freezes `AttemptQuestion` snapshots; student serving and auto-grading use those rows only.
+- Exam time windows are enforced in `startExam` / `saveAnswer`; new attempts require `effectiveStatus === "ongoing"` after `syncExamLifecycle`.
 
-See [schema.prisma](./prisma/schema.prisma) and [studentExamActions.ts](./src/server/studentExamActions.ts) for the current implementation.
+See [schema.prisma](./prisma/schema.prisma), [lifecycle.ts](./src/lib/exam/lifecycle.ts), and [studentExamActions.ts](./src/server/studentExamActions.ts).
 
 ## Demonstration preparation
 

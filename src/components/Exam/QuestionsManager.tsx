@@ -14,6 +14,7 @@ import {
   getBankHierarchy,
   getBankQuestions,
   importBankQuestions,
+  importRandomBankQuestions,
 } from "@/server/bankActions";
 import { questionFormSchema, QuestionFormType } from "@/lib/zodSchema";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -40,6 +41,7 @@ type Question = {
   answer: string | null;
   points: number;
   order: number;
+  difficulty?: string;
 };
 
 type BankQuestion = {
@@ -49,6 +51,7 @@ type BankQuestion = {
   options: string | null;
   answer: string | null;
   points: number;
+  difficulty?: string;
   topic: {
     id: string;
     name: string;
@@ -68,10 +71,10 @@ type QuestionsManagerProps = {
 };
 
 const questionTypes: Record<string, string> = {
-  multiple_choice: "Multiple Choice",
-  single_choice: "Single Choice",
+  multiple_choice: "Multiple Select",
+  single_choice: "Single Answer",
   true_false: "True / False",
-  short_answer: "Short Answer",
+  short_answer: "Written Response",
 };
 
 const EditQuestionForm = ({
@@ -94,6 +97,8 @@ const EditQuestionForm = ({
       options: question.options ?? "",
       answer: question.answer ?? "",
       points: question.points,
+      difficulty:
+        (question.difficulty as QuestionFormType["difficulty"]) ?? "medium",
     },
     mode: "all",
   });
@@ -105,6 +110,7 @@ const EditQuestionForm = ({
     fd.set("options", data.options ?? "");
     fd.set("answer", data.answer ?? "");
     fd.set("points", String(data.points));
+    fd.set("difficulty", data.difficulty ?? "medium");
 
     try {
       await updateQuestion(question.id, fd);
@@ -251,8 +257,10 @@ const ImportBankDialog = ({ examId }: { examId: string }) => {
   const [hierarchy, setHierarchy] = useState<HierarchyItem[]>([]);
   const [subjectId, setSubjectId] = useState("");
   const [topicId, setTopicId] = useState("");
+  const [difficulty, setDifficulty] = useState("");
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [randomCount, setRandomCount] = useState("5");
   const [loading, setLoading] = useState(false);
   const [fetching, setFetching] = useState(false);
 
@@ -280,6 +288,8 @@ const ImportBankDialog = ({ examId }: { examId: string }) => {
       setSearch("");
       setSubjectId("");
       setTopicId("");
+      setDifficulty("");
+      setRandomCount("5");
     }
   };
 
@@ -312,9 +322,34 @@ const ImportBankDialog = ({ examId }: { examId: string }) => {
     setLoading(false);
   };
 
+  const handleRandomImport = async () => {
+    const count = Number(randomCount);
+    if (!Number.isFinite(count) || count < 1) {
+      toast.error("Enter a valid random count");
+      return;
+    }
+    setLoading(true);
+    try {
+      await importRandomBankQuestions(examId, {
+        count,
+        subjectId: subjectId || undefined,
+        topicId: topicId || undefined,
+        difficulty: difficulty || undefined,
+      });
+      toast.success(`Imported up to ${count} random question(s)`);
+      setOpen(false);
+    } catch (e) {
+      toast.error(
+        e instanceof Error ? e.message : "Failed to import random questions",
+      );
+    }
+    setLoading(false);
+  };
+
   const filtered = bankQuestions.filter((q) => {
     if (subjectId && q.topic.subject.id !== subjectId) return false;
     if (topicId && q.topic.id !== topicId) return false;
+    if (difficulty && (q.difficulty ?? "medium") !== difficulty) return false;
     if (search && !q.text.toLowerCase().includes(search.toLowerCase()))
       return false;
     return true;
@@ -341,7 +376,7 @@ const ImportBankDialog = ({ examId }: { examId: string }) => {
           </DialogDescription>
         </DialogHeader>
 
-        <div className="grid grid-cols-2 gap-2">
+        <div className="grid grid-cols-3 gap-2">
           <select
             value={subjectId}
             onChange={(e) => {
@@ -349,7 +384,7 @@ const ImportBankDialog = ({ examId }: { examId: string }) => {
               setTopicId("");
             }}
             className="bg-card focus-visible:border-ring focus-visible:ring-ring/30 h-11 w-full rounded-md border border-input px-3 py-1 text-sm outline-none focus-visible:ring-3">
-            <option value="">All subjects</option>
+            <option value="">All categories</option>
             {hierarchy.map((s) => (
               <option
                 key={s.id}
@@ -370,6 +405,15 @@ const ImportBankDialog = ({ examId }: { examId: string }) => {
                 {t.name}
               </option>
             ))}
+          </select>
+          <select
+            value={difficulty}
+            onChange={(e) => setDifficulty(e.target.value)}
+            className="bg-card focus-visible:border-ring focus-visible:ring-ring/30 h-11 w-full rounded-md border border-input px-3 py-1 text-sm outline-none focus-visible:ring-3">
+            <option value="">All difficulties</option>
+            <option value="easy">Easy</option>
+            <option value="medium">Medium</option>
+            <option value="hard">Hard</option>
           </select>
         </div>
 
@@ -414,6 +458,9 @@ const ImportBankDialog = ({ examId }: { examId: string }) => {
                       {questionTypes[q.type] ?? q.type}
                     </span>
                     <span className="bg-muted rounded-full px-2 py-0.5">
+                      {q.difficulty ?? "medium"}
+                    </span>
+                    <span className="bg-muted rounded-full px-2 py-0.5">
                       {q.points} pt{q.points !== 1 ? "s" : ""}
                     </span>
                   </span>
@@ -421,6 +468,25 @@ const ImportBankDialog = ({ examId }: { examId: string }) => {
               </label>
             ))
           }
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <Input
+            type="number"
+            min={1}
+            max={100}
+            value={randomCount}
+            onChange={(e) => setRandomCount(e.target.value)}
+            className="w-24"
+            aria-label="Random import count"
+          />
+          <Button
+            variant="outline"
+            size="lg"
+            onClick={handleRandomImport}
+            disabled={loading}>
+            Random import
+          </Button>
         </div>
 
         <DialogFooter showCloseButton>
@@ -488,6 +554,9 @@ const QuestionsManager = ({ examId, questions }: QuestionsManagerProps) => {
                 <div className="text-muted-foreground flex flex-wrap gap-2 text-xs">
                   <span className="bg-muted rounded-full px-2 py-0.5">
                     {questionTypes[q.type] ?? q.type}
+                  </span>
+                  <span className="bg-muted rounded-full px-2 py-0.5">
+                    {q.difficulty ?? "medium"}
                   </span>
                   <span className="bg-muted rounded-full px-2 py-0.5">
                     {q.points} pt{q.points !== 1 ? "s" : ""}

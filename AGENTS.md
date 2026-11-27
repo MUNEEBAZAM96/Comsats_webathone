@@ -50,11 +50,15 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
 # Question storage (critical)
 
-- `Question.options` and `BankQuestion.options` are **newline-separated plain text** (not JSON). Parse with `.split("\n").filter(Boolean)`.
-- `Question.answer` for choice types (`multiple_choice`, `single_choice`, `true_false`): single correct option text.
-- For `multiple_choice`, student answers are stored as multiple option texts joined with `\n`. The auto-grader does `normalize(text) === normalize(question.answer)` — so the correct answer must match the joined string exactly.
-- `short_answer` grading uses comma-separated keywords in `question.answer`. Score = `round(points * matchCount / totalKeywords)`.
-- Normalize function: `trim().toLowerCase().replace(/\s+/g, " ")`.
+- `Question.options` and `BankQuestion.options` are **newline-separated plain text** (not JSON). Parse with `.split("\n").filter(Boolean)` (helper: `splitLines` in `src/lib/exam/markingScheme.ts`).
+- `difficulty`: `easy` | `medium` | `hard` on bank + exam questions (default `medium`).
+- `markingScheme`: optional JSON string (see `markingSchemeSchema`). Prefer it for grading; keep `answer` synced for compat.
+- `Question.answer` for choice types: correct option text(s). Multi-select stores **sorted unique** option lines joined with `\n`.
+- Student multi-select answers: option texts joined with `\n`. Grading is **set equality** / partial credit via `src/lib/exam/grading.ts` (not fragile single-string-only).
+- `short_answer`: prefer `markingScheme.keywords`; else comma-separated keywords in `answer`. Score = proportional keyword hits unless mode says otherwise.
+- Normalize: `trim`, optional lower-case, collapse whitespace (`normalizeText` in grading.ts).
+- **Attempt snapshots**: `AttemptQuestion` frozen at `startExam`; serve/grade from snapshots only. See `.cursor/rules/question-bank.mdc`.
+- Exam flags: `shuffleQuestions` / `shuffleOptions` (draft-editable); applied per attempt at start.
 
 # Env (T3)
 
@@ -105,22 +109,34 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
 # Question bank hierarchy
 
-- Structure: **Subject → Topic → BankQuestion** (shared global taxonomy).
+- Structure: **Subject (= category) → Topic → BankQuestion** (shared global taxonomy).
 - Routes: `/questions` (subjects) → `/questions/subjects/[subjectId]` (topics) → `/questions/topics/[topicId]` (questions) → `/questions/topics/[topicId]/new` + `/questions/[id]` (edit).
 - Every bank question **requires** a `topicId`. Migration seeds **Uncategorized → General** for existing rows.
 - Examiners can create subjects/topics; **only admin** can delete subjects/topics/questions, and only when empty (no cascade wipe).
-- Exam `Question` rows stay flat snapshots — no FK to subject/topic on import.
-- Import dialog filters by subject + topic + search.
+- Exam `Question` rows stay flat snapshots — no FK to subject/topic on import; copies `difficulty` + `markingScheme`.
+- Import: `importBankQuestions` (ID list) and `importRandomBankQuestions` (filters + `ORDER BY RANDOM()`). Draft + zero attempts only.
+- Student attempts freeze into `AttemptQuestion` (text/type/options/answer/points/order/difficulty/markingScheme/optionOrder).
+
+# Exam lifecycle (backend)
+
+- **Stored `Exam.status`**: `draft` | `published` | `completed` only. Never persist `ongoing`.
+- **Derived `effectiveStatus`**: from `src/lib/exam/lifecycle.ts` — for stored `published`, before start → `published`, inside window → `ongoing`, after end → sync to `completed`.
+- **Fields**: `instructions` (optional text), `totalMarks` (SUM of question points; synced on draft edits, snapshotted on publish).
+- List/detail server payloads include `status`, `effectiveStatus`, `totalMarks`, `instructions` plus existing keys (`_count.questions`, `createdBy`, …).
+- `publishExam`: requires ≥1 question, duration ≥1, both `startTime` and `endTime` with end > start.
+- `completeExam`: admin or owning examiner; `published` → `completed`.
+- Delete: examiner = own draft only and zero attempts; admin = draft always, published/completed only if zero attempts.
+- See `.cursor/rules/exam-lifecycle.mdc`.
 
 # Exam CRUD conventions
 
-- List page fetches via `getExams()` — returns exams + `_count.questions` + `createdBy.name`.
+- List page fetches via `getExams()` — returns exams + `_count.questions` + `createdBy.name` (+ lifecycle fields above).
 - Create/Detail use `ExamForm` (`src/components/Exam/ExamForm.tsx`) — `"use client"`, `react-hook-form` + `Controller` pattern.
 - Questions use **bank-first** approach: `QuestionsManager` (`src/components/Exam/QuestionsManager.tsx`) has no inline "Add Question" form. Use the "Import from Bank" dialog to copy questions into the exam. Edit/delete work on the exam copy only.
 - `ExamsTable` (`src/components/Exam/ExamsTable.tsx`) — client component with delete/publish actions.
 - Dynamic `Link` hrefs with `typedRoutes: true` require `as Route` cast — `import type { Route } from "next"`. The same applies to `router.push()` calls. Regenerate `.next/types/link.d.ts` via `npm run typecheck` (which runs `next typegen`) after adding new routes — the cast can then be removed.
-- Import is Copy/Snapshot: `importBankQuestions` creates new `Question` rows duplicating all fields. No FK link to bank originals.
-- Admin can delete any exam. Examiners cannot delete published exams.
+- Import is Copy/Snapshot: `importBankQuestions` creates new `Question` rows duplicating all fields. No FK link to bank originals; refreshes `totalMarks` on draft exams.
+- Admin may delete draft always; published/completed only with zero attempts. Examiners delete own drafts only (never with attempts).
 - `redirect()` in a server action called from a client component can be misinterpreted as a promise rejection by `.catch()`. Prefer client-side `router.push()` after the action resolves.
 
 # Student exam flow
@@ -132,7 +148,8 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
 # Exam time-window enforcement
 
-- `Exam.startTime` / `Exam.endTime` are enforced server-side in `startExam` (blocks new attempts outside window) and `saveAnswer` (blocks saving after endTime).
+- `startExam` calls `syncExamLifecycle`, then allows new attempts only when `effectiveStatus === "ongoing"` (blocks `draft` / `completed`).
+- `Exam.startTime` / `Exam.endTime` are also enforced in `saveAnswer` (blocks saving after endTime).
 - In-progress attempts whose `endTime` has passed are auto-submitted when the student tries to resume (in `startExam`).
 - Student exams list shows "Scheduled" / "Ended" badges and disables Start outside the window. Dashboard has separate "Upcoming Exams" section.
 

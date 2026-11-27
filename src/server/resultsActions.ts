@@ -153,6 +153,7 @@ export const getResultDetail = async (attemptId: string) => {
           },
         },
         answers: true,
+        questions: { orderBy: { order: "asc" } },
         user: { select: { id: true, name: true, email: true } },
       },
     });
@@ -172,7 +173,35 @@ export const getResultDetail = async (attemptId: string) => {
         redirect("/proctor/results" as never);
     }
 
-    return attempt;
+    // Never expose answer keys / marking schemes while attempt is in progress
+    if (attempt.status === "in_progress") {
+      redirect(
+        session.user.role === "admin" ? "/admin/results"
+        : session.user.role === "examiner" ? "/examiner/results"
+        : ("/proctor/results" as never),
+      );
+    }
+
+    if (attempt.questions.length === 0) {
+      throw new Error("Exam question snapshots are missing for this attempt");
+    }
+
+    const questions = attempt.questions.map((s) => ({
+      id: s.sourceQuestionId,
+      text: s.text,
+      type: s.type,
+      options: s.optionOrder ?? s.options,
+      answer: s.answer,
+      points: s.points,
+      order: s.order,
+      difficulty: s.difficulty,
+      // Staff may see keys after submit; omit raw markingScheme JSON from proctors
+      ...(session.user.role === "proctor" ? {} : { markingScheme: s.markingScheme }),
+    }));
+    return {
+      ...attempt,
+      exam: { ...attempt.exam, questions },
+    };
   } catch (e) {
     if (e instanceof Error) throw e;
     throw new Error("Failed to fetch result details");

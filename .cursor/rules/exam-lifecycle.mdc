@@ -1,0 +1,50 @@
+---
+description: Exam lifecycle — stored vs effective status, publish/delete/complete, totalMarks
+globs: src/server/examActions.ts,src/server/studentExamActions.ts,src/server/bankActions.ts,src/lib/exam/**/*.ts,prisma/schema.prisma
+alwaysApply: false
+---
+
+# Exam lifecycle (Phase 03 backend)
+
+Phase 03 is **backend-only**. UI may ignore new fields until a later frontend phase. Do not invent a second status scheme.
+
+## Stored vs effective status
+
+- **DB (Exam.status)**: `draft` | `published` | `completed` only. Never write `ongoing`.
+- **API `effectiveStatus`**: derived in `src/lib/exam/lifecycle.ts` via `getEffectiveExamStatus`:
+  - `draft` / `completed` → same
+  - `published` + before `startTime` → `published`
+  - `published` + after `endTime` → treat as completed (`syncExamLifecycle` flips DB; getters report `completed`)
+  - `published` + inside window (missing bound = open on that side) → `ongoing`
+
+Call `syncExamLifecycle` from `getExams` / `getExamById` / `publishExam` / `startExam` / `completeExam`.
+
+## Transitions
+
+| Action | Rule |
+| --- | --- |
+| create | always `draft`, `totalMarks: 0` |
+| update | only if stored `draft` |
+| publish | `draft` → `published`; require ≥1 question, duration ≥1, **both** startTime and endTime, end > start; snapshot `totalMarks` |
+| completeExam | `published` → `completed` (admin or owning examiner) |
+| auto-complete | `syncExamLifecycle` when `published` and `now > endTime` |
+| question mutate / bank import | draft only; then `refreshExamTotalMarks` |
+
+## Delete (safer policy)
+
+- **Examiner**: own `draft` only; never if any `ExamAttempt` exists.
+- **Admin**: may delete `draft` always; may delete `published`/`completed` **only if zero attempts**. Attempts present → clear error (do not cascade-wipe student work).
+
+## totalMarks
+
+- Live sum: `SUM(Question.points)`.
+- Column `Exam.totalMarks` kept in sync on draft question changes; snapshotted on publish (mutations forbidden after publish).
+- `getExams` / `getExamById` return `status`, `effectiveStatus`, `totalMarks`, `instructions` without dropping existing keys (`_count`, `createdBy`, etc.).
+- `startExam` still sets `ExamAttempt.maxScore` from a live question sum.
+
+## Authz
+
+- Mutations: admin or owning examiner (`requireExamStaff` + ownership).
+- `getExamById` returns answer keys — admin/examiner only (proctors blocked even with `exam:read`).
+- After `completeExam` / auto-complete: `saveAnswer` rejects; `startExam` auto-submits any in-progress attempt on resume; `submitExam` may still finalize.
+- `publishExam` re-checks draft + question count inside a transaction before flipping status.
