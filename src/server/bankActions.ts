@@ -1,6 +1,6 @@
 "use server";
 
-import { revalidatePath, revalidateTag } from "next/cache";
+import { revalidatePath, updateTag } from "next/cache";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
@@ -29,9 +29,9 @@ const revalidateBank = (role?: string | null, ...extraPaths: string[]) => {
     revalidatePath(path);
   }
   if (role === "admin") {
-    revalidateTag("admin-dashboard", "max");
+    updateTag("admin-dashboard");
   } else {
-    revalidateTag("examiner-dashboard", "max");
+    updateTag("examiner-dashboard");
   }
 };
 

@@ -1,7 +1,7 @@
 "use server";
 
 import "server-only";
-import { revalidatePath } from "next/cache";
+import { revalidatePath, updateTag } from "next/cache";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { differenceInMilliseconds, isAfter } from "date-fns";
@@ -794,6 +794,8 @@ export const submitExam = async (rawAttemptId: string, options?: SubmitOptions) 
     await ensureAttemptSnapshots(attemptId, attempt.exam);
     const result = await finalizeAttemptIdempotent(attemptId, opts.source);
 
+    updateTag("admin-dashboard");
+    updateTag("examiner-dashboard");
     revalidatePath("/student");
     revalidatePath("/student/exams");
     revalidatePath("/student/results");

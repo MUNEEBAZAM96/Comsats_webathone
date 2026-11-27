@@ -1,6 +1,6 @@
 "use server";
 
-import { revalidatePath, revalidateTag } from "next/cache";
+import { revalidatePath, updateTag } from "next/cache";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
@@ -57,7 +57,7 @@ export const createUser = async (formData: FormData) => {
     });
 
     revalidatePath("/admin/users");
-    revalidateTag("admin-dashboard", "max");
+    updateTag("admin-dashboard");
   } catch (e) {
     if (e instanceof Error) throw e;
     throw new Error("Failed to create user");
@@ -77,7 +77,7 @@ export const deleteUser = async (userId: string) => {
     });
 
     revalidatePath("/admin/users");
-    revalidateTag("admin-dashboard", "max");
+    updateTag("admin-dashboard");
   } catch (e) {
     if (e instanceof Error) throw e;
     throw new Error("Failed to delete user");
@@ -97,7 +97,7 @@ export const setUserRole = async (userId: string, role: Role) => {
     });
 
     revalidatePath("/admin/users");
-    revalidateTag("admin-dashboard", "max");
+    updateTag("admin-dashboard");
   } catch (e) {
     if (e instanceof Error) throw e;
     throw new Error("Failed to update user role");
@@ -116,7 +116,7 @@ export const banUser = async (userId: string) => {
     });
 
     revalidatePath("/admin/users");
-    revalidateTag("admin-dashboard", "max");
+    updateTag("admin-dashboard");
   } catch (e) {
     if (e instanceof Error) throw e;
     throw new Error("Failed to ban user");
@@ -134,7 +134,7 @@ export const unbanUser = async (userId: string) => {
     });
 
     revalidatePath("/admin/users");
-    revalidateTag("admin-dashboard", "max");
+    updateTag("admin-dashboard");
   } catch (e) {
     if (e instanceof Error) throw e;
     throw new Error("Failed to unban user");

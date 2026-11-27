@@ -14,6 +14,7 @@ import {
   type StudentExamListItem,
 } from "@/server/studentExamActions";
 import { DashboardIntro } from "@/components/Dashboard/DashboardIntro";
+import { DashboardAutoRefresh } from "@/components/Dashboard/DashboardAutoRefresh";
 import { DashboardLink } from "@/components/Dashboard/DashboardLink";
 import {
   DashboardEmpty,
@@ -170,6 +171,7 @@ const StudentDashboardContent = async () => {
 
   return (
     <section className="grid gap-5">
+      <DashboardAutoRefresh />
       <DashboardIntro
         title={`Welcome back, ${session.user.name}`}
         action={

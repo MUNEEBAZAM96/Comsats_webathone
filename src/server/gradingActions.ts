@@ -2,7 +2,7 @@
 
 import "server-only";
 import { addHours, isAfter } from "date-fns";
-import { revalidatePath } from "next/cache";
+import { revalidatePath, updateTag } from "next/cache";
 import prisma from "@/lib/database/dbClient";
 import { gradeAnswer, isManualQuestion, roundScore } from "@/lib/exam/grading";
 import { getEffectiveExamStatus } from "@/lib/exam/lifecycle";
@@ -45,6 +45,8 @@ const publishSession = async () => {
 };
 
 const revalidateResults = (examId: string, attemptIds: string[] = []) => {
+  updateTag("admin-dashboard");
+  updateTag("examiner-dashboard");
   for (const base of ["/admin", "/examiner"]) {
     revalidatePath(`${base}/exams/${examId}/results`);
     revalidatePath(`${base}/exams/${examId}/grading`);

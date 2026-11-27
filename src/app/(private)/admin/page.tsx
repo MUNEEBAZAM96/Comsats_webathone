@@ -7,6 +7,7 @@ import {
   DashboardRow,
   DashboardSection,
 } from "@/components/Dashboard/DashboardSection";
+import { DashboardAutoRefresh } from "@/components/Dashboard/DashboardAutoRefresh";
 import { StatusBreakdown } from "@/components/Dashboard/StatusBreakdown";
 import { DashboardTrend } from "@/components/Dashboard/DashboardTrend";
 import { ExamStartsHeatmap } from "@/components/Dashboard/ExamStartsHeatmap";
@@ -40,6 +41,7 @@ export const metadata: Metadata = {
 
 const AdminDashboard = () => (
   <section className="grid gap-5">
+    <DashboardAutoRefresh />
     <Suspense fallback={<DashboardShellSkeleton />}>
       <AdminDashboardContent />
     </Suspense>
@@ -75,7 +77,7 @@ const AdminDashboardContent = async () => {
 
 const AdminDashboardStats = async ({ utcDay }: { utcDay: string }) => {
   "use cache";
-  cacheLife("minutes");
+  cacheLife("seconds");
   cacheTag("admin-dashboard");
 
   const calendarStart = parseISO(`${utcDay}T00:00:00Z`);
@@ -129,12 +131,14 @@ const AdminDashboardStats = async ({ utcDay }: { utcDay: string }) => {
         SELECT ${utcDay}::date - 13 AS first_day, ${utcDay}::date AS last_day
       ),
       counts AS (
-        SELECT "submittedAt"::date AS day, count(*)::integer AS value
+        SELECT
+          ("submittedAt" AT TIME ZONE 'UTC')::date AS day,
+          count(*)::integer AS value
         FROM "exam_attempt", bounds
-        WHERE "submittedAt" >= bounds.first_day::timestamp
-          AND "submittedAt" < (bounds.last_day + 1)::timestamp
+        WHERE "submittedAt" >= (bounds.first_day::timestamp AT TIME ZONE 'UTC')
+          AND "submittedAt" < ((bounds.last_day + 1)::timestamp AT TIME ZONE 'UTC')
           AND "status" IN ('submitted', 'graded')
-        GROUP BY "submittedAt"::date
+        GROUP BY ("submittedAt" AT TIME ZONE 'UTC')::date
       )
       SELECT to_char(series.day, 'YYYY-MM-DD') AS day, coalesce(counts.value, 0) AS value
       FROM bounds

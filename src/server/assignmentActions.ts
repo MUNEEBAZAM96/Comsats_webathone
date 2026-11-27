@@ -2,7 +2,7 @@
 
 import "server-only";
 
-import { revalidatePath } from "next/cache";
+import { revalidatePath, updateTag } from "next/cache";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { z } from "zod";
@@ -43,6 +43,7 @@ const loadManageableExam = async (
 };
 
 const revalidateAssignmentPaths = (examId: string) => {
+  updateTag("examiner-dashboard");
   revalidatePath(`/admin/exams/${examId}/assign`);
   revalidatePath(`/examiner/exams/${examId}/assign`);
   revalidatePath(`/admin/exams/${examId}`);

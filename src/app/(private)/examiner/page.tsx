@@ -1,4 +1,5 @@
 import { DashboardIntro } from "@/components/Dashboard/DashboardIntro";
+import { DashboardAutoRefresh } from "@/components/Dashboard/DashboardAutoRefresh";
 import {
   DashboardEmpty,
   DashboardRow,
@@ -34,6 +35,7 @@ export const metadata: Metadata = {
 
 const ExaminerDashboard = () => (
   <section className="grid gap-5">
+    <DashboardAutoRefresh />
     <Suspense fallback={<ExaminerShellSkeleton />}>
       <ExaminerDashboardContent />
     </Suspense>
@@ -70,7 +72,7 @@ const ExaminerDashboardContent = async () => {
 
 const getExaminerOverview = async (userId: string) => {
   "use cache";
-  cacheLife("minutes");
+  cacheLife("seconds");
   cacheTag("examiner-dashboard");
 
   const ownedExams = { createdById: userId };

@@ -3,7 +3,7 @@
 import "server-only";
 
 import { randomUUID } from "node:crypto";
-import { revalidatePath } from "next/cache";
+import { revalidatePath, updateTag } from "next/cache";
 import { z } from "zod";
 import { hashPasswordFunction } from "@/lib/argon2";
 import prisma from "@/lib/database/dbClient";
@@ -224,6 +224,7 @@ export const runTabularImport = async (raw: unknown) => {
         });
         return users.length;
       });
+      updateTag("admin-dashboard");
       revalidatePath("/admin/users");
       return {
         validCount: accepted.length,

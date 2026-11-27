@@ -1,6 +1,6 @@
 "use server";
 
-import { revalidatePath, revalidateTag } from "next/cache";
+import { revalidatePath, updateTag } from "next/cache";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
@@ -25,8 +25,8 @@ const zodMessage = (e: ZodError) =>
     .join("; ");
 
 const revalidateExamDashboard = (role?: string | null) => {
-  if (role === "admin") revalidateTag("admin-dashboard", "max");
-  else revalidateTag("examiner-dashboard", "max");
+  if (role === "admin") updateTag("admin-dashboard");
+  else updateTag("examiner-dashboard");
 };
 
 const basePathFor = (role?: string | null) =>
