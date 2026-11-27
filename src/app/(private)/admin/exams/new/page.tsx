@@ -3,6 +3,7 @@ import { Suspense } from "react";
 import ExamForm from "@/components/Exam/ExamForm";
 import { createExam } from "@/server/examActions";
 import { requireRole } from "@/server/session";
+import { RouteLoading } from "@/components/Loading/RouteLoading";
 
 export const metadata: Metadata = {
   title: "Create Exam",
@@ -10,7 +11,7 @@ export const metadata: Metadata = {
 };
 
 const AdminCreateExamPage = () => (
-  <Suspense fallback={null}>
+  <Suspense fallback={<RouteLoading variant="workspace" />}>
     <AdminCreateExamContent />
   </Suspense>
 );

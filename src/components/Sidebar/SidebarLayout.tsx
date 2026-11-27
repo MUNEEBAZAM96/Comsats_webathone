@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { LogOutIcon, SettingsIcon } from "lucide-react";
+import { Loader2Icon, LogOutIcon, SettingsIcon } from "lucide-react";
+import { toast } from "sonner";
 import {
   SidebarProvider,
   SidebarInset,
@@ -49,12 +50,21 @@ const SidebarLayout = ({
   const pathname = usePathname();
   const isTablet = useIsTablet();
   const [sidebarOpen, setSidebarOpen] = useState<boolean | null>(null);
+  const [signingOut, setSigningOut] = useState(false);
   const roleLabel = roleLabels[groups[0]?.items[0]?.url] ?? "Workspace";
   const pageTitle = getPageTitle(pathname, groups);
 
   const handleSignOut = async () => {
-    await authClient.signOut();
-    router.push("/");
+    setSigningOut(true);
+    try {
+      const { error } = await authClient.signOut();
+      if (error) throw new Error(error.message ?? "Failed to sign out");
+      router.push("/");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to sign out");
+    } finally {
+      setSigningOut(false);
+    }
   };
 
   const initials =
@@ -143,9 +153,13 @@ const SidebarLayout = ({
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
                   className="cursor-pointer"
+                  disabled={signingOut}
+                  aria-busy={signingOut}
                   onClick={handleSignOut}>
-                  <LogOutIcon />
-                  Sign out
+                  {signingOut ?
+                    <Loader2Icon className="motion-safe:animate-spin" />
+                  : <LogOutIcon />}
+                  {signingOut ? "Signing out…" : "Sign out"}
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>

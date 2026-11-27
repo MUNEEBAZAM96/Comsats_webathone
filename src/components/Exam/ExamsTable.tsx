@@ -1,6 +1,11 @@
 "use client";
 
-import { EditIcon, EyeIcon, Loader2Icon, Trash2Icon } from "lucide-react";
+import {
+  EditIcon,
+  EyeIcon,
+  Loader2Icon,
+  Trash2Icon,
+} from "lucide-react";
 import Link from "next/link";
 import type { Route } from "next";
 import { useRouter } from "next/navigation";
@@ -119,9 +124,7 @@ const ExamsTable = ({ exams, basePath }: ExamsTableProps) => {
                     <Button
                       variant="outline"
                       size="icon-lg">
-                      {loadingId === exam.id ?
-                        <Loader2Icon className="size-4 animate-spin" />
-                      : <EyeIcon className="size-4" />}
+                      <EyeIcon className="size-4" />
                     </Button>
                   </Link>
                   {exam.status === "draft" && (
@@ -138,7 +141,12 @@ const ExamsTable = ({ exams, basePath }: ExamsTableProps) => {
                         size="lg"
                         onClick={() => handlePublish(exam.id)}
                         disabled={loadingId === exam.id}>
-                        Publish
+                        {loadingId === exam.id ?
+                          <>
+                            <Loader2Icon className="size-4 motion-safe:animate-spin" />
+                            Publishing…
+                          </>
+                        : "Publish"}
                       </Button>
                     </>
                   )}

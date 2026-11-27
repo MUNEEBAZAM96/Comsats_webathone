@@ -55,6 +55,9 @@ const UsersTable = ({ initialUsers, initialTotal }: UsersTableProps) => {
   const [users, setUsers] = useState<UserRow[]>(initialUsers);
   const [total, setTotal] = useState(initialTotal);
   const [loadingId, setLoadingId] = useState<string | null>(null);
+  const [loadingAction, setLoadingAction] = useState<
+    "ban" | "delete" | "role" | null
+  >(null);
   const [search, setSearch] = useState("");
   const [offset, setOffset] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -66,17 +69,22 @@ const UsersTable = ({ initialUsers, initialTotal }: UsersTableProps) => {
   const fetchUsers = useCallback(
     async (searchValue: string, newOffset: number) => {
       setLoading(true);
-      const data = await getUsers({
-        searchValue: searchValue || undefined,
-        searchField: searchValue ? "name" : undefined,
-        searchOperator: "contains",
-        limit,
-        offset: newOffset,
-      });
-      setUsers(data.users as UserRow[]);
-      setTotal(data.total);
-      setOffset(newOffset);
-      setLoading(false);
+      try {
+        const data = await getUsers({
+          searchValue: searchValue || undefined,
+          searchField: searchValue ? "name" : undefined,
+          searchOperator: "contains",
+          limit,
+          offset: newOffset,
+        });
+        setUsers(data.users as UserRow[]);
+        setTotal(data.total);
+        setOffset(newOffset);
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "Failed to load users");
+      } finally {
+        setLoading(false);
+      }
     },
     [],
   );
@@ -97,16 +105,19 @@ const UsersTable = ({ initialUsers, initialTotal }: UsersTableProps) => {
 
   const handleDelete = async (userId: string) => {
     setLoadingId(userId);
+    setLoadingAction("delete");
     setPendingDeleteId(null);
     try {
       await deleteUser(userId);
       toast.success("User deleted");
       refresh();
-      fetchUsers(search, offset);
+      await fetchUsers(search, offset);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed to delete user");
+    } finally {
+      setLoadingId(null);
+      setLoadingAction(null);
     }
-    setLoadingId(null);
   };
 
   const handleRoleChange = async (
@@ -114,15 +125,18 @@ const UsersTable = ({ initialUsers, initialTotal }: UsersTableProps) => {
     role: "admin" | "examiner" | "proctor" | "student",
   ) => {
     setLoadingId(userId);
+    setLoadingAction("role");
     try {
       await setUserRole(userId, role);
       toast.success("Role updated");
       refresh();
-      fetchUsers(search, offset);
+      await fetchUsers(search, offset);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed to update role");
+    } finally {
+      setLoadingId(null);
+      setLoadingAction(null);
     }
-    setLoadingId(null);
   };
 
   const handleBanConfirm = async () => {
@@ -130,6 +144,7 @@ const UsersTable = ({ initialUsers, initialTotal }: UsersTableProps) => {
     const user = pendingBanUser;
     setPendingBanUser(null);
     setLoadingId(user.id);
+    setLoadingAction("ban");
     try {
       if (user.banned) {
         await unbanUser(user.id);
@@ -139,11 +154,13 @@ const UsersTable = ({ initialUsers, initialTotal }: UsersTableProps) => {
         toast.success("User banned");
       }
       refresh();
-      fetchUsers(search, offset);
+      await fetchUsers(search, offset);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed to update user");
+    } finally {
+      setLoadingId(null);
+      setLoadingAction(null);
     }
-    setLoadingId(null);
   };
 
   const totalPages = Math.ceil(total / limit);
@@ -164,7 +181,14 @@ const UsersTable = ({ initialUsers, initialTotal }: UsersTableProps) => {
         </div>
       </div>
 
-      <div className="border-border overflow-x-auto rounded-3xl border">
+      <div
+        className="border-border overflow-x-auto rounded-3xl border"
+        aria-busy={loading}>
+        <p
+          role="status"
+          className="sr-only">
+          {loading ? "Loading users" : ""}
+        </p>
         <table className="w-full text-sm">
           <thead>
             <tr className="border-border bg-muted/50 border-b">
@@ -232,6 +256,12 @@ const UsersTable = ({ initialUsers, initialTotal }: UsersTableProps) => {
                           {user.role.charAt(0).toUpperCase() +
                             user.role.slice(1)}
                         </span>
+                        {loadingId === user.id && loadingAction === "role" && (
+                          <Loader2Icon
+                            aria-hidden="true"
+                            className="size-3 motion-safe:animate-spin"
+                          />
+                        )}
                       </SelectTrigger>
                       <SelectContent>
                         {ROLES.map((r) => (
@@ -264,8 +294,8 @@ const UsersTable = ({ initialUsers, initialTotal }: UsersTableProps) => {
                         size="xs"
                         onClick={() => setPendingBanUser(user)}
                         disabled={loadingId === user.id}>
-                        {loadingId === user.id ?
-                          <Loader2Icon className="size-3 animate-spin" />
+                        {loadingId === user.id && loadingAction === "ban" ?
+                          <Loader2Icon className="size-3 motion-safe:animate-spin" />
                         : user.banned ?
                           "Unban"
                         : "Ban"}
@@ -275,8 +305,8 @@ const UsersTable = ({ initialUsers, initialTotal }: UsersTableProps) => {
                         size="icon-sm"
                         onClick={() => setPendingDeleteId(user.id)}
                         disabled={loadingId === user.id}>
-                        {loadingId === user.id ?
-                          <Loader2Icon className="size-4 animate-spin" />
+                        {loadingId === user.id && loadingAction === "delete" ?
+                          <Loader2Icon className="size-4 motion-safe:animate-spin" />
                         : <Trash2Icon className="text-destructive size-4" />}
                       </Button>
                     </div>

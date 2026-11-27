@@ -236,14 +236,16 @@ const EditQuestionForm = ({
           disabled={isSubmitting || !isValid}
           size="lg">
           {isSubmitting ?
-            <Loader2Icon className="size-4 animate-spin" />
+            <Loader2Icon className="size-4 motion-safe:animate-spin" />
           : "Update"}
+          {isSubmitting ? "Updating…" : null}
         </Button>
         <Button
           type="button"
           variant="outline"
           size="lg"
-          onClick={onDone}>
+          onClick={onDone}
+          disabled={isSubmitting}>
           <XIcon className="size-4" /> Cancel
         </Button>
       </div>
@@ -487,7 +489,12 @@ const ImportBankDialog = ({ examId }: { examId: string }) => {
             size="lg"
             onClick={handleRandomImport}
             disabled={loading}>
-            Random import
+            {loading ?
+              <>
+                <Loader2Icon className="size-4 motion-safe:animate-spin" />
+                Importing random questions…
+              </>
+            : "Random import"}
           </Button>
         </div>
 

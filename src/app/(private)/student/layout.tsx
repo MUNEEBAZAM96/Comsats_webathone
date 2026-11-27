@@ -4,10 +4,11 @@ import { LayoutProps } from "@/lib/types";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { SidebarLayout } from "@/components/Sidebar/SidebarLayout";
+import { RouteLoading } from "@/components/Loading/RouteLoading";
 import { studentNav } from "@/components/Sidebar/nav-config";
 
 const StudentLayout = ({ children }: LayoutProps) => (
-  <Suspense fallback={null}>
+  <Suspense fallback={<RouteLoading variant="workspace" />}>
     <StudentGate>{children}</StudentGate>
   </Suspense>
 );

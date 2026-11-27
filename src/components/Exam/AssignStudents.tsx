@@ -153,9 +153,9 @@ const AssignStudents = ({
               disabled={selected.size === 0 || loading}
               size="lg">
               {loading ?
-                <Loader2Icon className="size-4 animate-spin" />
+                <Loader2Icon className="size-4 motion-safe:animate-spin" />
               : <PlusIcon className="size-4" />}
-              Assign Selected ({selected.size})
+              {loading ? "Assigning…" : `Assign Selected (${selected.size})`}
             </Button>
             <Button
               variant="outline"

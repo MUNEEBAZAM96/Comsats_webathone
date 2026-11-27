@@ -1,5 +1,6 @@
 import ResetPasswordForm from "@/components/Auth/ResetPasswordForm";
 import { AuthHeading } from "@/components/Auth/AuthHeading";
+import { RouteLoading } from "@/components/Loading/RouteLoading";
 import { Metadata } from "next";
 import Link from "next/link";
 import { Suspense } from "react";
@@ -16,7 +17,7 @@ const ResetPasswordPage = () => {
         title="Reset password"
         description="Choose a new password for your account."
       />
-      <Suspense fallback={null}>
+      <Suspense fallback={<RouteLoading variant="auth" />}>
         <ResetPasswordForm />
       </Suspense>
       <p className="border-t pt-6 text-center text-sm text-muted-foreground">

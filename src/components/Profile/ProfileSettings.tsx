@@ -123,9 +123,9 @@ const ProfileSettings = () => {
               disabled={nameIsSubmitting || !nameIsDirty}
               size="lg">
               {nameIsSubmitting ?
-                <Loader2Icon className="animate-spin" />
+                <Loader2Icon className="motion-safe:animate-spin" />
               : <SaveIcon />}
-              Save
+              {nameIsSubmitting ? "Saving…" : "Save"}
             </Button>
           </form>
         </CardContent>
@@ -212,9 +212,9 @@ const ProfileSettings = () => {
               className="w-fit"
               size="lg">
               {passwordIsSubmitting ?
-                <Loader2Icon className="animate-spin" />
+                <Loader2Icon className="motion-safe:animate-spin" />
               : <LockIcon />}
-              Change Password
+              {passwordIsSubmitting ? "Changing password…" : "Change Password"}
             </Button>
           </form>
         </CardContent>

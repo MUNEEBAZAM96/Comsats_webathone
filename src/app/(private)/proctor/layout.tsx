@@ -4,10 +4,11 @@ import { LayoutProps } from "@/lib/types";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { SidebarLayout } from "@/components/Sidebar/SidebarLayout";
+import { RouteLoading } from "@/components/Loading/RouteLoading";
 import { proctorNav } from "@/components/Sidebar/nav-config";
 
 const ProctorLayout = ({ children }: LayoutProps) => (
-  <Suspense fallback={null}>
+  <Suspense fallback={<RouteLoading variant="workspace" />}>
     <ProctorGate>{children}</ProctorGate>
   </Suspense>
 );

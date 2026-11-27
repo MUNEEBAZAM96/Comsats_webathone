@@ -72,8 +72,9 @@ const AvatarUpload = () => {
       refetch();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed to upload avatar");
+    } finally {
+      setSaving(false);
     }
-    setSaving(false);
   };
 
   const handleRemove = async () => {
@@ -95,8 +96,9 @@ const AvatarUpload = () => {
       refetch();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed to remove avatar");
+    } finally {
+      setSaving(false);
     }
-    setSaving(false);
   };
 
   const handleCancel = () => {
@@ -138,7 +140,7 @@ const AvatarUpload = () => {
                   {saving ?
                     <Loader2Icon className="animate-spin" />
                   : <CameraIcon />}
-                  Save
+                  {saving ? "Saving…" : "Save"}
                 </Button>
                 <Button
                   onClick={handleCancel}
@@ -165,8 +167,10 @@ const AvatarUpload = () => {
                     variant="outline"
                     size="lg"
                     disabled={saving}>
-                    <Trash2Icon />
-                    Remove
+                    {saving ?
+                      <Loader2Icon className="motion-safe:animate-spin" />
+                    : <Trash2Icon />}
+                    {saving ? "Removing…" : "Remove"}
                   </Button>
                 )}
               </>

@@ -1,5 +1,6 @@
 import { ProfileSettings } from "@/components/Profile/ProfileSettings";
 import { requireSession } from "@/server/session";
+import { RouteLoading } from "@/components/Loading/RouteLoading";
 import type { Metadata } from "next";
 import { Suspense } from "react";
 
@@ -9,7 +10,7 @@ export const metadata: Metadata = {
 };
 
 const SettingsPage = () => (
-  <Suspense fallback={null}>
+  <Suspense fallback={<RouteLoading variant="workspace" />}>
     <SettingsPageContent />
   </Suspense>
 );
