@@ -1,19 +1,20 @@
 import { DashboardIntro } from "@/components/Dashboard/DashboardIntro";
 import {
+  DashboardEmpty,
   DashboardRow,
   DashboardSection,
 } from "@/components/Dashboard/DashboardSection";
 import { StatusBreakdown } from "@/components/Dashboard/StatusBreakdown";
 import { StatCard } from "@/components/Dashboard/StatCard";
 import {
-  ExaminerDashboardSkeleton,
   ExaminerShellSkeleton,
+  ExaminerDashboardSkeleton,
 } from "@/components/Examiner/ExaminerShellSkeleton";
 import { Badge } from "@/components/shadcnui/badge";
 import { DashboardLink } from "@/components/Dashboard/DashboardLink";
 import prisma from "@/lib/database/dbClient";
+import { formatDisplayDate } from "@/lib/date/format";
 import { requireRole } from "@/server/session";
-import { format } from "date-fns";
 import {
   BookOpenIcon,
   FileTextIcon,
@@ -31,7 +32,7 @@ export const metadata: Metadata = {
 };
 
 const ExaminerDashboard = () => (
-  <section className="grid gap-6">
+  <section className="grid gap-5">
     <Suspense fallback={<ExaminerShellSkeleton />}>
       <ExaminerDashboardContent />
     </Suspense>
@@ -40,159 +41,243 @@ const ExaminerDashboard = () => (
 
 const ExaminerDashboardContent = async () => {
   const session = await requireRole("examiner");
-  const userId = session.user.id;
 
   return (
     <>
       <DashboardIntro
         title="Examiner overview"
         action={
-          <DashboardLink href="/examiner/exams/new">
-            <PlusIcon aria-hidden="true" /> Create Exam
-          </DashboardLink>
-        }>
-        Prepare exams, assign candidates, and review results for your exams.
+          <>
+            <DashboardLink href="/examiner/exams/new">
+              <PlusIcon aria-hidden="true" /> Create exam
+            </DashboardLink>
+            <DashboardLink href="/examiner/questions" variant="outline">
+              <BookOpenIcon aria-hidden="true" /> Question bank
+            </DashboardLink>
+          </>
+        }
+      >
+        Prepare assessments and pick up submissions that need marking.
       </DashboardIntro>
 
       <Suspense fallback={<ExaminerDashboardSkeleton />}>
-        <ExaminerDashboardStats userId={userId} />
+        <ExaminerDashboardStats userId={session.user.id} />
       </Suspense>
     </>
   );
 };
 
-const ExaminerDashboardStats = async ({ userId }: { userId: string }) => {
+const getExaminerOverview = async (userId: string) => {
   "use cache";
   cacheLife("minutes");
   cacheTag("examiner-dashboard");
 
-  const [examCounts, questionCount, totalStudents, attemptCounts, recentExams] =
-    await Promise.all([
-      prisma.exam.groupBy({
-        by: ["status"],
-        where: { createdById: userId },
-        _count: true,
-      }),
-      prisma.bankQuestion.count({ where: { createdById: userId } }),
-      prisma.examAssignment.findMany({
-        where: { exam: { createdById: userId } },
-        select: { userId: true },
-        distinct: ["userId"],
-      }),
-      prisma.examAttempt.findMany({
-        where: { exam: { createdById: userId } },
-        select: { status: true },
-      }),
-      prisma.exam.findMany({
-        where: { createdById: userId },
-        take: 5,
-        orderBy: { createdAt: "desc" },
-        select: {
-          id: true,
-          title: true,
-          status: true,
-          createdAt: true,
-          _count: {
-            select: { questions: true, assignments: true, attempts: true },
-          },
-        },
-      }),
-    ]);
+  const ownedExams = { createdById: userId };
 
-  const totalExams = examCounts.reduce((sum, g) => sum + g._count, 0);
-  const publishedExams =
-    examCounts.find((g) => g.status === "published")?._count ?? 0;
-  const draftExams = examCounts.find((g) => g.status === "draft")?._count ?? 0;
-  const totalAttempts = attemptCounts.length;
-  const studentCount = totalStudents.length;
+  return Promise.all([
+    prisma.exam.groupBy({ by: ["status"], where: ownedExams, _count: true }),
+    prisma.bankQuestion.count({ where: { createdById: userId } }),
+    prisma.examAssignment.groupBy({
+      by: ["userId"],
+      where: { exam: ownedExams },
+    }),
+    prisma.exam.findMany({
+      where: ownedExams,
+      take: 5,
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      select: {
+        id: true,
+        title: true,
+        status: true,
+        createdAt: true,
+        _count: {
+          select: { questions: true, assignments: true, attempts: true },
+        },
+      },
+    }),
+  ]);
+};
+
+const ExaminerDashboardStats = async ({ userId }: { userId: string }) => {
+  const pendingAttempt = { status: "submitted" };
+  const [
+    [examCounts, questionCount, assignedCandidates, recentExams],
+    markingQueue,
+    attemptCounts,
+  ] = await Promise.all([
+    getExaminerOverview(userId),
+    prisma.exam.findMany({
+      where: { createdById: userId, attempts: { some: pendingAttempt } },
+      orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
+      take: 4,
+      select: {
+        id: true,
+        title: true,
+        _count: { select: { attempts: { where: pendingAttempt } } },
+      },
+    }),
+    prisma.examAttempt.groupBy({
+      by: ["status"],
+      where: { exam: { createdById: userId } },
+      _count: true,
+    }),
+  ]);
+
+  const totalExams = examCounts.reduce((sum, group) => sum + group._count, 0);
+  const statusCount = (status: string) =>
+    examCounts.find((group) => group.status === status)?._count ?? 0;
+  const attemptCount = attemptCounts.reduce(
+    (sum, group) => sum + group._count,
+    0,
+  );
+  const gradedCount =
+    attemptCounts.find(({ status }) => status === "graded")?._count ?? 0;
+  const pendingCount =
+    attemptCounts.find(({ status }) => status === "submitted")?._count ?? 0;
+  const submittedCount = gradedCount + pendingCount;
+  const gradedShare = submittedCount ? (gradedCount / submittedCount) * 100 : 0;
 
   return (
     <>
-      <div className="dashboard-stats grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
+      <div className="dashboard-stats grid grid-cols-2 gap-3 lg:grid-cols-4">
         <StatCard
           icon={<FileTextIcon />}
-          label="My Exams"
+          label="My exams"
           value={totalExams}
+          detail={`${statusCount("draft")} draft · ${statusCount("published")} published · ${statusCount("completed")} completed`}
         />
         <StatCard
           icon={<BookOpenIcon />}
-          label="Bank Questions"
+          label="My bank questions"
           value={questionCount}
         />
         <StatCard
           icon={<UsersIcon />}
-          label="Students Assigned"
-          value={studentCount}
+          label="Assigned candidates"
+          value={assignedCandidates.length}
         />
         <StatCard
           icon={<GraduationCapIcon />}
-          label="Total Attempts"
-          value={totalAttempts}
+          label="Attempts"
+          value={attemptCount}
         />
       </div>
 
-      <div className="dashboard-section grid gap-4 lg:grid-cols-[minmax(0,1.65fr)_minmax(0,1fr)]">
-        <DashboardSection
-          id="examiner-exams"
-          title="Your exams">
-          {recentExams.length ?
+      <div className="dashboard-section grid gap-4 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
+        <DashboardSection id="examiner-marking" title="Marking queue">
+          {markingQueue.length ? (
             <ul>
-              {recentExams.map((exam) => (
+              {markingQueue.map((exam) => (
                 <DashboardRow key={exam.id}>
-                  <div className="min-w-0 flex-1 basis-44">
-                    <p className="break-words font-medium">{exam.title}</p>
+                  <div className="min-w-0 flex-1 basis-40">
+                    <p className="wrap-anywhere font-semibold">{exam.title}</p>
                     <p className="text-xs text-muted-foreground">
-                      {exam._count.questions} questions &middot;{" "}
-                      {exam._count.assignments} students &middot;{" "}
-                      {exam._count.attempts} attempts &middot;{" "}
-                      {format(exam.createdAt, "MMM d, yyyy")}
+                      {exam._count.attempts} awaiting marking
                     </p>
                   </div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Badge
-                      variant="secondary"
-                      className="capitalize">
-                      {exam.status}
-                    </Badge>
-                    <DashboardLink
-                      href={`/examiner/exams/${exam.id}` as Route}
-                      variant="outline">
-                      Manage Exam
-                    </DashboardLink>
-                  </div>
+                  <DashboardLink
+                    href={`/examiner/exams/${exam.id}/grading` as Route}
+                    variant="outline"
+                  >
+                    Grade
+                  </DashboardLink>
                 </DashboardRow>
               ))}
             </ul>
-          : <p className="text-sm text-muted-foreground">
-              Create your first exam to start preparing an assessment.
-            </p>
-          }
+          ) : (
+            <DashboardEmpty>
+              No submissions are waiting for manual marking.
+            </DashboardEmpty>
+          )}
         </DashboardSection>
 
         <DashboardSection
-          id="examiner-preparation"
-          title="Exam preparation">
-          <StatusBreakdown
-            items={[
-              { label: "Draft", count: draftExams, tone: "warning" },
-              { label: "Published", count: publishedExams, tone: "info" },
-              {
-                label: "Completed",
-                count:
-                  examCounts.find(({ status }) => status === "completed")
-                    ?._count ?? 0,
-                tone: "success",
-              },
-            ]}
-          />
-          <DashboardLink
-            href="/examiner/questions"
-            variant="outline"
-            className="mt-4">
-            <BookOpenIcon aria-hidden="true" /> Question Bank
-          </DashboardLink>
+          id="examiner-marking-progress"
+          title="Marking progress"
+        >
+          {submittedCount ? (
+            <div className="flex flex-wrap items-center justify-center gap-4">
+              <div
+                aria-hidden="true"
+                className="grid size-28 shrink-0 place-items-center rounded-full p-2"
+                style={{
+                  background: `conic-gradient(var(--success) 0 ${gradedShare}%, var(--warning) ${gradedShare}% 100%)`,
+                }}
+              >
+                <div className="grid size-full place-content-center rounded-full bg-card text-center">
+                  <span className="font-heading text-2xl font-bold tabular-nums">
+                    {Math.round(gradedShare)}%
+                  </span>
+                  <span className="text-xs text-muted-foreground">graded</span>
+                </div>
+              </div>
+              <div className="grid min-w-0 flex-1 basis-40 gap-3">
+                <p className="text-sm text-muted-foreground">
+                  Across submissions on your exams
+                </p>
+                <StatusBreakdown
+                  items={[
+                    { label: "Graded", count: gradedCount, tone: "success" },
+                    {
+                      label: "Awaiting marking",
+                      count: pendingCount,
+                      tone: "warning",
+                    },
+                  ]}
+                />
+                <p className="sr-only">
+                  {Math.round(gradedShare)} percent graded.
+                </p>
+              </div>
+            </div>
+          ) : (
+            <DashboardEmpty>
+              Marking progress appears once candidates submit an attempt.
+            </DashboardEmpty>
+          )}
         </DashboardSection>
       </div>
+
+      <DashboardSection
+        id="examiner-exams"
+        title="Recent exams"
+        action={
+          <DashboardLink href="/examiner/exams" variant="outline">
+            All exams
+          </DashboardLink>
+        }
+      >
+        {recentExams.length ? (
+          <ul>
+            {recentExams.map((exam) => (
+              <DashboardRow key={exam.id}>
+                <div className="min-w-0 flex-1 basis-48">
+                  <p className="wrap-anywhere font-semibold">{exam.title}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {exam._count.questions} questions &middot;{" "}
+                    {exam._count.assignments} candidates &middot;{" "}
+                    {exam._count.attempts} attempts &middot;{" "}
+                    {formatDisplayDate(exam.createdAt)}
+                  </p>
+                </div>
+                <Badge variant="secondary" className="capitalize">
+                  {exam.status}
+                </Badge>
+                <DashboardLink
+                  href={`/examiner/exams/${exam.id}` as Route}
+                  variant="outline"
+                >
+                  Manage exam
+                </DashboardLink>
+              </DashboardRow>
+            ))}
+          </ul>
+        ) : (
+          <DashboardEmpty>
+            Create your first exam to start preparing an assessment.
+          </DashboardEmpty>
+        )}
+      </DashboardSection>
     </>
   );
 };

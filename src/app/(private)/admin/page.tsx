@@ -2,26 +2,32 @@ import {
   DashboardShellSkeleton,
   DashboardSkeleton,
 } from "@/components/Dashboard/DashboardShellSkeleton";
+import {
+  DashboardEmpty,
+  DashboardRow,
+  DashboardSection,
+} from "@/components/Dashboard/DashboardSection";
 import { StatusBreakdown } from "@/components/Dashboard/StatusBreakdown";
+import { DashboardTrend } from "@/components/Dashboard/DashboardTrend";
 import { DashboardIntro } from "@/components/Dashboard/DashboardIntro";
 import { StatusBadge } from "@/components/Results/StatusBadge";
 import { StatCard } from "@/components/Dashboard/StatCard";
 import { Badge } from "@/components/shadcnui/badge";
 import { DashboardLink } from "@/components/Dashboard/DashboardLink";
-import { Card, CardContent, CardHeader } from "@/components/shadcnui/card";
+import { ResponsiveTable } from "@/components/Workspace/ResponsiveTable";
 import prisma from "@/lib/database/dbClient";
+import { formatDisplayDate } from "@/lib/date/format";
 import { formatScore } from "@/lib/exam/grading";
 import { requireRole } from "@/server/session";
-import { format } from "date-fns";
+import { format, parseISO } from "date-fns";
 import {
   BookOpenIcon,
   FileTextIcon,
   GraduationCapIcon,
-  ChartNoAxesColumnIcon,
   PlusIcon,
   UsersIcon,
 } from "lucide-react";
-import type { Metadata, Route } from "next";
+import type { Metadata } from "next";
 import { cacheLife, cacheTag } from "next/cache";
 import Link from "next/link";
 import { Suspense } from "react";
@@ -32,7 +38,7 @@ export const metadata: Metadata = {
 };
 
 const AdminDashboard = () => (
-  <section className="grid gap-6">
+  <section className="grid gap-5">
     <Suspense fallback={<DashboardShellSkeleton />}>
       <AdminDashboardContent />
     </Suspense>
@@ -40,8 +46,6 @@ const AdminDashboard = () => (
 );
 
 const AdminDashboardContent = async () => {
-  // The admin layout redirects other roles but does not stop this page from
-  // rendering, so the page checks the role before any stats are loaded.
   await requireRole("admin");
 
   return (
@@ -49,57 +53,26 @@ const AdminDashboardContent = async () => {
       <DashboardIntro
         title="Admin overview"
         action={
-          <DashboardLink href="/admin/exams/new">
-            <PlusIcon aria-hidden="true" /> Create Exam
-          </DashboardLink>
-        }>
-        Manage exams and review platform activity.
+          <>
+            <DashboardLink href="/admin/exams/new">
+              <PlusIcon aria-hidden="true" /> Create exam
+            </DashboardLink>
+            <DashboardLink href="/admin/users" variant="outline">
+              <UsersIcon aria-hidden="true" /> Manage users
+            </DashboardLink>
+          </>
+        }
+      >
+        Review exam activity, candidate submissions, and account access.
       </DashboardIntro>
-
       <Suspense fallback={<DashboardSkeleton />}>
-        <AdminDashboardStats />
+        <AdminDashboardStats utcDay={new Date().toISOString().slice(0, 10)} />
       </Suspense>
-
-      <section
-        className="dashboard-section grid gap-4"
-        aria-labelledby="admin-quick-actions">
-        <h2
-          id="admin-quick-actions"
-          className="text-lg font-semibold">
-          Quick actions
-        </h2>
-        <div className="grid gap-3 sm:grid-cols-3">
-          {[
-            { href: "/admin/users", title: "Manage users", icon: UsersIcon },
-            {
-              href: "/admin/questions",
-              title: "Question bank",
-              icon: BookOpenIcon,
-            },
-            {
-              href: "/admin/results",
-              title: "View results",
-              icon: ChartNoAxesColumnIcon,
-            },
-          ].map(({ href, title, icon: Icon }) => (
-            <Link
-              key={href}
-              href={href as Route}
-              className="flex items-center gap-3 rounded-lg border bg-card p-4 text-sm font-semibold transition-colors hover:border-input hover:bg-secondary focus-visible:outline-2">
-              <Icon
-                aria-hidden="true"
-                className="size-5 shrink-0 text-primary"
-              />
-              <span className="min-w-0 flex-1">{title}</span>
-            </Link>
-          ))}
-        </div>
-      </section>
     </>
   );
 };
 
-const AdminDashboardStats = async () => {
+const AdminDashboardStats = async ({ utcDay }: { utcDay: string }) => {
   "use cache";
   cacheLife("minutes");
   cacheTag("admin-dashboard");
@@ -111,14 +84,15 @@ const AdminDashboardStats = async () => {
     attemptCounts,
     recentExams,
     recentAttempts,
+    dailySubmissions,
   ] = await Promise.all([
     prisma.user.groupBy({ by: ["role"], _count: true }),
     prisma.exam.groupBy({ by: ["status"], _count: true }),
     prisma.bankQuestion.count(),
     prisma.examAttempt.groupBy({ by: ["status"], _count: true }),
     prisma.exam.findMany({
-      take: 5,
-      orderBy: { createdAt: "desc" },
+      take: 4,
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
       select: {
         id: true,
         title: true,
@@ -129,214 +103,268 @@ const AdminDashboardStats = async () => {
     }),
     prisma.examAttempt.findMany({
       take: 5,
-      orderBy: { submittedAt: { sort: "desc", nulls: "last" } },
+      orderBy: [
+        { submittedAt: { sort: "desc", nulls: "last" } },
+        { startedAt: "desc" },
+        { id: "desc" },
+      ],
       select: {
         id: true,
         status: true,
-        autoScore: true,
         totalScore: true,
         maxScore: true,
         submittedAt: true,
         user: { select: { name: true } },
-        exam: { select: { title: true, id: true } },
+        exam: { select: { title: true } },
       },
     }),
+    prisma.$queryRaw<{ day: string; value: number }[]>`
+      WITH bounds AS (
+        SELECT ${utcDay}::date - 13 AS first_day, ${utcDay}::date AS last_day
+      ),
+      counts AS (
+        SELECT "submittedAt"::date AS day, count(*)::integer AS value
+        FROM "exam_attempt", bounds
+        WHERE "submittedAt" >= bounds.first_day::timestamp
+          AND "submittedAt" < (bounds.last_day + 1)::timestamp
+          AND "status" IN ('submitted', 'graded')
+        GROUP BY "submittedAt"::date
+      )
+      SELECT to_char(series.day, 'YYYY-MM-DD') AS day, coalesce(counts.value, 0) AS value
+      FROM bounds
+      CROSS JOIN LATERAL generate_series(bounds.first_day::timestamp, bounds.last_day::timestamp, interval '1 day') AS series(day)
+      LEFT JOIN counts ON counts.day = series.day::date
+      ORDER BY series.day
+    `,
   ]);
 
-  const totalUsers = userCounts.reduce((sum, g) => sum + g._count, 0);
-  const totalExams = examCounts.reduce((sum, g) => sum + g._count, 0);
-  const draftExams = examCounts.find((g) => g.status === "draft")?._count ?? 0;
-  const publishedExams =
-    examCounts.find((g) => g.status === "published")?._count ?? 0;
-  const totalAttempts = attemptCounts.reduce((sum, g) => sum + g._count, 0);
-  const inProgressAttempts =
-    attemptCounts.find((g) => g.status === "in_progress")?._count ?? 0;
-  const completedAttempts = attemptCounts
-    .filter(({ status }) => status === "submitted" || status === "graded")
-    .reduce((sum, { _count }) => sum + _count, 0);
+  const totalUsers = userCounts.reduce((sum, group) => sum + group._count, 0);
+  const totalExams = examCounts.reduce((sum, group) => sum + group._count, 0);
+  const draftExams =
+    examCounts.find(({ status }) => status === "draft")?._count ?? 0;
+  const totalAttempts = attemptCounts.reduce(
+    (sum, group) => sum + group._count,
+    0,
+  );
+  const pendingAttempts =
+    attemptCounts.find(({ status }) => status === "submitted")?._count ?? 0;
+  const submissionTotal = dailySubmissions.reduce(
+    (sum, { value }) => sum + value,
+    0,
+  );
 
   return (
     <>
-      <div className="dashboard-stats grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
+      <div className="dashboard-stats grid grid-cols-2 gap-3 lg:grid-cols-4">
         <StatCard
           icon={<UsersIcon />}
-          label="Total users"
+          label="User accounts"
           value={totalUsers}
         />
         <StatCard
           icon={<FileTextIcon />}
-          label="Total examinations"
+          label="Exams"
           value={totalExams}
+          detail={`${draftExams} in draft`}
         />
         <StatCard
           icon={<BookOpenIcon />}
-          label="Question bank items"
+          label="Bank questions"
           value={questionCount}
         />
         <StatCard
           icon={<GraduationCapIcon />}
-          label="Total attempts"
+          label="Attempts"
           value={totalAttempts}
+          detail={`${pendingAttempts} awaiting marking`}
         />
       </div>
 
-      <div className="dashboard-section grid gap-4 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
-        <div className="grid min-w-0 gap-4">
-          <Card>
-            <CardHeader>
-              <h2 className="font-heading text-base font-semibold">
-                Recent exams
-              </h2>
-            </CardHeader>
-            <CardContent>
-              {recentExams.length === 0 ?
-                <p className="text-muted-foreground py-4 text-center text-sm">
-                  No exams created yet.
-                </p>
-              : <div className="grid gap-2">
-                  {recentExams.map((exam) => (
-                    <div
-                      key={exam.id}
-                      className="border-border flex items-center justify-between gap-2 border-b pb-2 last:border-0 last:pb-0">
-                      <div className="min-w-0">
-                        <Link
-                          href={`/admin/exams/${exam.id}` as Route}
-                          className="break-words text-sm font-medium underline-offset-4 hover:underline">
-                          {exam.title}
-                        </Link>
-                        <p className="break-words text-xs text-muted-foreground">
-                          {exam.createdBy.name} &middot;{" "}
-                          {format(exam.createdAt, "MMM d, yyyy")}
-                        </p>
-                      </div>
-                      <Badge
-                        variant="secondary"
-                        className={
-                          exam.status === "published" ?
-                            "bg-info-surface text-info"
-                          : undefined
-                        }>
-                        {exam.status}
-                      </Badge>
-                    </div>
-                  ))}
-                </div>
-              }
-            </CardContent>
-          </Card>
+      <DashboardSection id="admin-submissions" title="Daily submissions">
+        {submissionTotal > 0 ? (
+          <div className="grid gap-3">
+            <p className="text-sm text-muted-foreground">
+              <strong className="font-semibold tabular-nums text-foreground">
+                {submissionTotal.toLocaleString("en")}
+              </strong>{" "}
+              submissions in the last 14 days (UTC)
+            </p>
+            <DashboardTrend
+              variant="daily-count"
+              metric="Submissions"
+              points={dailySubmissions.map(({ day, value }) => {
+                const date = parseISO(day);
+                return {
+                  label: format(date, "MMM d"),
+                  detail: formatDisplayDate(date),
+                  value,
+                };
+              })}
+            />
+          </div>
+        ) : (
+          <DashboardEmpty>
+            No attempts were submitted in the last 14 days (UTC).
+          </DashboardEmpty>
+        )}
+      </DashboardSection>
 
-          <Card>
-            <CardHeader>
-              <h2 className="font-heading text-base font-semibold">
-                Recent attempts
-              </h2>
-            </CardHeader>
-            <CardContent>
-              {recentAttempts.length === 0 ?
-                <p className="text-muted-foreground py-4 text-center text-sm">
-                  No attempts yet.
-                </p>
-              : <div className="grid gap-2">
-                  {recentAttempts.map((attempt) => (
-                    <div
-                      key={attempt.id}
-                      className="border-border flex items-center justify-between gap-2 border-b pb-2 last:border-0 last:pb-0">
-                      <div className="min-w-0">
-                        {attempt.status === "in_progress" ?
-                          <p className="break-words text-sm font-medium">
-                            {attempt.user.name}
-                          </p>
-                        : <Link
-                            className="break-words text-sm font-medium underline-offset-4 hover:underline"
-                            href={`/admin/results/${attempt.id}`}>
+      <div className="dashboard-section grid gap-4 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
+        <DashboardSection
+          id="admin-recent-exams"
+          title="Recent exams"
+          action={
+            <DashboardLink href="/admin/exams" variant="outline">
+              All exams
+            </DashboardLink>
+          }
+        >
+          {recentExams.length ? (
+            <ul>
+              {recentExams.map((exam) => (
+                <DashboardRow key={exam.id}>
+                  <div className="min-w-0 flex-1 basis-40">
+                    <Link
+                      href={`/admin/exams/${exam.id}`}
+                      className="wrap-anywhere font-semibold underline-offset-4 hover:underline"
+                    >
+                      {exam.title}
+                    </Link>
+                    <p className="wrap-anywhere text-xs text-muted-foreground">
+                      {exam.createdBy.name} &middot;{" "}
+                      {formatDisplayDate(exam.createdAt)}
+                    </p>
+                  </div>
+                  <Badge variant="secondary" className="capitalize">
+                    {exam.status}
+                  </Badge>
+                </DashboardRow>
+              ))}
+            </ul>
+          ) : (
+            <DashboardEmpty>No exams have been created yet.</DashboardEmpty>
+          )}
+        </DashboardSection>
+
+        <DashboardSection id="admin-user-roles" title="Accounts by role">
+          {userCounts.length ? (
+            <StatusBreakdown
+              items={userCounts
+                .map(({ role, _count }) => ({
+                  label:
+                    role === "student"
+                      ? "Candidate"
+                      : role
+                        ? role.charAt(0).toUpperCase() + role.slice(1)
+                        : "Unassigned",
+                  count: _count,
+                }))
+                .sort(
+                  (a, b) => b.count - a.count || a.label.localeCompare(b.label),
+                )}
+            />
+          ) : (
+            <DashboardEmpty>No accounts to display.</DashboardEmpty>
+          )}
+        </DashboardSection>
+      </div>
+
+      <DashboardSection
+        id="admin-recent-attempts"
+        title="Recent attempts"
+        action={
+          <DashboardLink href="/admin/results" variant="outline">
+            All results
+          </DashboardLink>
+        }
+      >
+        {recentAttempts.length ? (
+          <ResponsiveTable aria-label="Recent attempts">
+            <table className="w-full min-w-0 table-fixed text-left text-sm sm:table-auto [&_td]:px-3 [&_th]:px-3">
+              <thead className="text-xs">
+                <tr>
+                  <th scope="col" className="w-[57%] py-2.5 sm:w-auto">
+                    Candidate
+                  </th>
+                  <th scope="col" className="hidden py-2.5 sm:table-cell">
+                    Exam
+                  </th>
+                  <th scope="col" className="py-2.5">
+                    Status<span className="sm:hidden"> and score</span>
+                  </th>
+                  <th scope="col" className="hidden py-2.5 sm:table-cell">
+                    Submitted
+                  </th>
+                  <th
+                    scope="col"
+                    className="hidden py-2.5 text-right sm:table-cell"
+                  >
+                    Score
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {recentAttempts.map((attempt) => {
+                  const score =
+                    attempt.status !== "in_progress" &&
+                    attempt.totalScore != null
+                      ? `${formatScore(attempt.totalScore)}/${attempt.maxScore}`
+                      : null;
+
+                  return (
+                    <tr key={attempt.id} className="align-top sm:align-middle">
+                      <th
+                        scope="row"
+                        className="wrap-anywhere py-3 font-medium"
+                      >
+                        {attempt.status === "in_progress" ? (
+                          attempt.user.name
+                        ) : (
+                          <Link
+                            href={`/admin/results/${attempt.id}`}
+                            className="underline-offset-4 hover:underline"
+                          >
                             {attempt.user.name}
                           </Link>
-                        }
-                        <p className="break-words text-xs text-muted-foreground">
-                          {attempt.exam.title}
-                          {attempt.submittedAt &&
-                            ` · ${format(attempt.submittedAt, "MMM d, yyyy")}`}
-                        </p>
-                      </div>
-                      <div className="flex shrink-0 flex-wrap items-center gap-2">
-                        {attempt.status !== "in_progress" && (
-                          <span className="text-xs font-medium">
-                            {attempt.totalScore === null ?
-                              "Marking pending"
-                            : `${formatScore(attempt.totalScore)}/${attempt.maxScore}`}
+                        )}
+                        <div className="mt-1 grid gap-0.5 text-xs font-normal text-muted-foreground sm:hidden">
+                          <span>{attempt.exam.title}</span>
+                          {attempt.submittedAt && (
+                            <span>
+                              {formatDisplayDate(attempt.submittedAt)}
+                            </span>
+                          )}
+                        </div>
+                      </th>
+                      <td className="hidden wrap-anywhere py-3 sm:table-cell">
+                        {attempt.exam.title}
+                      </td>
+                      <td className="py-3">
+                        <StatusBadge status={attempt.status} />
+                        {score && (
+                          <span className="mt-1 block text-xs tabular-nums sm:hidden">
+                            {score}
                           </span>
                         )}
-                        <StatusBadge status={attempt.status} />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              }
-            </CardContent>
-          </Card>
-        </div>
-        <div className="grid min-w-0 content-start gap-4 sm:grid-cols-2 lg:grid-cols-1">
-          <Card>
-            <CardHeader>
-              <h2 className="font-heading text-base font-semibold">
-                User distribution
-              </h2>
-            </CardHeader>
-            <CardContent>
-              {userCounts.length ?
-                <StatusBreakdown
-                  items={userCounts.map(({ role, _count }) => ({
-                    label:
-                      role ?
-                        role === "student" ?
-                          "Candidate"
-                        : role.charAt(0).toUpperCase() + role.slice(1)
-                      : "Unassigned",
-                    count: _count,
-                  }))}
-                />
-              : <p className="text-sm text-muted-foreground">
-                  No users to show.
-                </p>
-              }
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <h2 className="font-heading text-base font-semibold">
-                Exam and attempt status
-              </h2>
-            </CardHeader>
-            <CardContent>
-              <div className="grid gap-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground text-sm">
-                    Published
-                  </span>
-                  <span className="font-medium">{publishedExams}</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground text-sm">Draft</span>
-                  <span className="font-medium">{draftExams}</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground text-sm">
-                    Attempts in progress
-                  </span>
-                  <span className="font-medium">{inProgressAttempts}</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground text-sm">
-                    Completed attempts
-                  </span>
-                  <span className="font-medium">{completedAttempts}</span>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      </div>
+                      </td>
+                      <td className="hidden py-3 whitespace-nowrap text-muted-foreground sm:table-cell">
+                        {attempt.submittedAt
+                          ? formatDisplayDate(attempt.submittedAt)
+                          : "—"}
+                      </td>
+                      <td className="hidden py-3 text-right whitespace-nowrap tabular-nums sm:table-cell">
+                        {score ?? "—"}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </ResponsiveTable>
+        ) : (
+          <DashboardEmpty>No candidate attempts yet.</DashboardEmpty>
+        )}
+      </DashboardSection>
     </>
   );
 };

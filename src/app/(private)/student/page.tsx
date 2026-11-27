@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import type { ReactNode } from "react";
 import { Suspense } from "react";
 import {
   CalendarClockIcon,
@@ -8,29 +7,31 @@ import {
   RotateCcwIcon,
   TargetIcon,
 } from "lucide-react";
+import { format } from "date-fns";
 import { requireRole } from "@/server/session";
-import { getStudentExams } from "@/server/studentExamActions";
 import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/shadcnui/card";
+  getStudentExams,
+  type StudentExamListItem,
+} from "@/server/studentExamActions";
 import { DashboardIntro } from "@/components/Dashboard/DashboardIntro";
 import { DashboardLink } from "@/components/Dashboard/DashboardLink";
-import { StatusBreakdown } from "@/components/Dashboard/StatusBreakdown";
+import {
+  DashboardEmpty,
+  DashboardRow,
+  DashboardSection,
+} from "@/components/Dashboard/DashboardSection";
 import { StatCard } from "@/components/Dashboard/StatCard";
+import { DashboardTrend } from "@/components/Dashboard/DashboardTrend";
 import { DashboardShellSkeleton } from "@/components/Dashboard/DashboardShellSkeleton";
 import { CandidateExamAction } from "@/components/Student/CandidateExamAction";
 import { CandidateExamStateBadge } from "@/components/Student/CandidateExamStateBadge";
 import { groupCandidateExams } from "@/lib/exam/candidateBuckets";
 import { formatScore } from "@/lib/exam/grading";
 import {
+  formatDisplayDate,
   formatDisplayDateTime,
   formatDurationMinutes,
 } from "@/lib/date/format";
-import type { StudentExamListItem } from "@/server/studentExamActions";
 
 export const metadata: Metadata = {
   title: "Dashboard",
@@ -47,120 +48,95 @@ const examTiming = (exam: StudentExamListItem) => {
   const { eligibility } = exam;
   if (eligibility.state === "in_progress" && eligibility.attemptDeadline)
     return `Your attempt ends ${formatDisplayDateTime(eligibility.attemptDeadline)}`;
-  if (eligibility.bucket === "upcoming" && exam.startTime)
-    return `Opens ${formatDisplayDateTime(exam.startTime)}`;
-  if (eligibility.bucket === "completed" && exam.attempt?.submittedAt)
+  if (eligibility.state === "time_up" && eligibility.attemptDeadline)
+    return `Attempt expired ${formatDisplayDateTime(eligibility.attemptDeadline)}`;
+  if (exam.attempt?.submittedAt)
     return `Submitted ${formatDisplayDateTime(exam.attempt.submittedAt)}`;
-  if (eligibility.state === "missed" && exam.endTime)
-    return `Closed ${formatDisplayDateTime(exam.endTime)}`;
-  if (exam.endTime) return `Closes ${formatDisplayDateTime(exam.endTime)}`;
+  if (exam.endTime)
+    return `${eligibility.state === "missed" ? "Closed" : "Closes"} ${formatDisplayDateTime(exam.endTime)}`;
   return null;
 };
 
 const ExamRow = ({ exam }: { exam: StudentExamListItem }) => {
   const timing = examTiming(exam);
-  const score =
-    (
-      exam.attempt &&
-      exam.eligibility.action === "view_result" &&
-      exam.resultsVisible &&
-      exam.attempt.totalScore != null
-    ) ?
-      `${formatScore(exam.attempt.totalScore)}/${exam.attempt.maxScore}`
-    : null;
-  const awaitingResults =
-    exam.attempt && exam.eligibility.action === "view_result" && !score;
+  const result =
+    exam.attempt && exam.eligibility.action === "view_result"
+      ? exam.resultsVisible && exam.attempt.totalScore != null
+        ? `Score ${formatScore(exam.attempt.totalScore)}/${exam.attempt.maxScore}`
+        : "Results not released yet"
+      : null;
 
   return (
-    <div className="border-border flex flex-wrap items-center justify-between gap-3 rounded-xl border p-4">
-      <div className="grid min-w-0 gap-1">
+    <DashboardRow>
+      <div className="grid min-w-0 flex-1 basis-44 gap-1">
         <div className="flex flex-wrap items-center gap-2">
-          <p className="font-medium break-words">{exam.title}</p>
+          <p className="wrap-anywhere font-semibold">{exam.title}</p>
           <CandidateExamStateBadge state={exam.eligibility.state} />
         </div>
-        <p className="text-muted-foreground text-xs">
-          {formatDurationMinutes(exam.duration)} · {exam._count.questions}{" "}
-          questions
-          {timing && ` · ${timing}`}
-          {score && ` · Score ${score}`}
-          {awaitingResults && " · Results not released yet"}
+        <p className="text-xs text-muted-foreground">
+          {formatDurationMinutes(exam.duration)} &middot;{" "}
+          {exam._count.questions} questions
         </p>
+        {(timing || result) && (
+          <p className="text-xs leading-relaxed text-muted-foreground">
+            {[timing, result].filter(Boolean).join(" · ")}
+          </p>
+        )}
       </div>
-      <CandidateExamAction
-        examId={exam.id}
-        attemptId={exam.attempt?.id ?? null}
-        eligibility={exam.eligibility}
-      />
-    </div>
+      {exam.eligibility.action !== "none" && (
+        <CandidateExamAction
+          examId={exam.id}
+          attemptId={exam.attempt?.id ?? null}
+          eligibility={exam.eligibility}
+        />
+      )}
+    </DashboardRow>
   );
 };
 
-const BucketCard = ({
-  title,
-  description,
-  empty,
-  exams,
-  footer,
-}: {
-  title: string;
-  description: string;
-  empty: string;
-  exams: StudentExamListItem[];
-  footer?: ReactNode;
-}) => (
-  <Card>
-    <CardHeader>
-      <CardTitle>{title}</CardTitle>
-      <CardDescription>{description}</CardDescription>
-    </CardHeader>
-    <CardContent className="grid gap-3">
-      {exams.length === 0 ?
-        <p className="text-muted-foreground text-sm">{empty}</p>
-      : exams.map((exam) => (
-          <ExamRow
-            key={exam.id}
-            exam={exam}
-          />
-        ))
-      }
-      {footer}
-    </CardContent>
-  </Card>
-);
+const activityTimestamp = (exam: StudentExamListItem) =>
+  (exam.attempt?.submittedAt ?? exam.endTime ?? exam.startTime)?.getTime() ?? 0;
 
 const StudentDashboardContent = async () => {
   const session = await requireRole("student");
   const { exams } = await getStudentExams();
   const { available, upcoming, completed } = groupCandidateExams(exams);
-
   const inProgress = available.filter(
-    (e) => e.eligibility.state === "in_progress",
+    ({ eligibility }) => eligibility.state === "in_progress",
   );
-  const pctScores = completed.flatMap((e) =>
-    (
-      e.eligibility.action === "view_result" &&
-      e.resultsVisible &&
-      e.attempt?.totalScore != null &&
-      e.attempt.maxScore > 0
-    ) ?
-      [(e.attempt.totalScore / e.attempt.maxScore) * 100]
-    : [],
+  const ready = available.filter(
+    ({ eligibility }) => eligibility.action === "start",
   );
-  const avgPct =
-    pctScores.length > 0 ?
-      `${Math.round(pctScores.reduce((s, p) => s + p, 0) / pctScores.length)}%`
+  const expired = completed.filter(
+    ({ eligibility }) => eligibility.state === "time_up",
+  );
+  const activeExams = [...available, ...expired];
+  const recentActivity = completed
+    .filter(({ eligibility }) => eligibility.state !== "time_up")
+    .sort((a, b) => activityTimestamp(b) - activityTimestamp(a));
+
+  const releasedScores = completed
+    .flatMap(({ eligibility, resultsVisible, attempt, title }) =>
+      eligibility.action === "view_result" &&
+      resultsVisible &&
+      attempt?.totalScore != null &&
+      attempt.maxScore > 0
+        ? [
+            {
+              date: attempt.submittedAt ?? attempt.startedAt,
+              title,
+              score: (attempt.totalScore / attempt.maxScore) * 100,
+            },
+          ]
+        : [],
+    )
+    .sort((a, b) => a.date.getTime() - b.date.getTime());
+  const avgPct = releasedScores.length
+    ? `${Math.round(releasedScores.reduce((sum, { score }) => sum + score, 0) / releasedScores.length)}%`
     : "—";
 
-  const viewAll = (
-    <DashboardLink
-      href="/student/exams"
-      variant="outline">
-      All examinations
-    </DashboardLink>
-  );
-
   return (
-    <section className="grid gap-6">
+    <section className="grid gap-5">
       <DashboardIntro
         title={`Welcome back, ${session.user.name}`}
         action={
@@ -168,21 +144,20 @@ const StudentDashboardContent = async () => {
             <DashboardLink href="/student/exams">
               <FileTextIcon aria-hidden="true" /> My exams
             </DashboardLink>
-            <DashboardLink
-              href="/student/results"
-              variant="outline">
+            <DashboardLink href="/student/results" variant="outline">
               <GraduationCapIcon aria-hidden="true" /> My results
             </DashboardLink>
           </>
-        }>
-        Track your exam schedule and pick up where you left off.
+        }
+      >
+        Check what is open today and when your next exam starts.
       </DashboardIntro>
 
-      <div className="dashboard-stats grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
+      <div className="dashboard-stats grid grid-cols-2 gap-3 lg:grid-cols-4">
         <StatCard
           icon={<FileTextIcon />}
-          label="Available now"
-          value={available.length}
+          label="Ready to start"
+          value={ready.length}
         />
         <StatCard
           icon={<RotateCcwIcon />}
@@ -198,74 +173,120 @@ const StudentDashboardContent = async () => {
           icon={<TargetIcon />}
           label="Average score"
           value={avgPct}
+          detail={
+            releasedScores.length
+              ? "Across released results"
+              : "No released scores yet"
+          }
         />
       </div>
 
-      <div className="dashboard-section grid items-start gap-4 xl:grid-cols-[minmax(0,1.65fr)_minmax(0,1fr)]">
-        {exams.length === 0 ?
-          <Card className="p-8 text-center">
-            <GraduationCapIcon
-              aria-hidden="true"
-              className="text-muted-foreground mx-auto mb-3 size-8"
-            />
-            <p className="text-muted-foreground mb-1">
-              You haven&apos;t been assigned any exams yet.
+      <div className="dashboard-section grid gap-4 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
+        <DashboardSection
+          id="candidate-exam-actions"
+          title="Start, resume or finalize"
+        >
+          {activeExams.length ? (
+            <ul>
+              {activeExams.map((exam) => (
+                <ExamRow key={exam.id} exam={exam} />
+              ))}
+            </ul>
+          ) : (
+            <>
+              <DashboardEmpty>
+                {exams.length
+                  ? "You have no exams to start or resume right now."
+                  : "You haven’t been assigned any exams yet."}
+              </DashboardEmpty>
+              <DashboardLink
+                href="/student/practice"
+                variant="outline"
+                className="mt-3"
+              >
+                Practice an exam
+              </DashboardLink>
+            </>
+          )}
+        </DashboardSection>
+
+        <DashboardSection id="candidate-schedule" title="Upcoming schedule">
+          {upcoming.length ? (
+            <ul>
+              {upcoming.slice(0, 4).map((exam) => (
+                <DashboardRow key={exam.id}>
+                  <div className="flex min-w-0 items-center gap-3">
+                    <div
+                      aria-hidden="true"
+                      className="grid size-11 shrink-0 place-content-center rounded-lg bg-info-surface text-center font-semibold text-info"
+                    >
+                      <span className="text-[0.625rem] uppercase">
+                        {exam.startTime && format(exam.startTime, "MMM")}
+                      </span>
+                      <span className="text-base leading-none">
+                        {exam.startTime && format(exam.startTime, "d")}
+                      </span>
+                    </div>
+                    <div className="min-w-0">
+                      <p className="wrap-anywhere font-semibold">
+                        {exam.title}
+                      </p>
+                      <p className="text-xs leading-relaxed text-muted-foreground">
+                        {exam.startTime &&
+                          formatDisplayDateTime(exam.startTime)}
+                        {" · "}
+                        {formatDurationMinutes(exam.duration)}
+                      </p>
+                    </div>
+                  </div>
+                </DashboardRow>
+              ))}
+            </ul>
+          ) : (
+            <DashboardEmpty>No upcoming exams are scheduled.</DashboardEmpty>
+          )}
+        </DashboardSection>
+      </div>
+
+      <DashboardSection id="candidate-score-trend" title="Released score trend">
+        {releasedScores.length >= 2 ? (
+          <div className="grid gap-3">
+            <p className="text-sm text-muted-foreground">
+              Score percentages for your latest{" "}
+              {Math.min(releasedScores.length, 8)} exams with released marks
             </p>
-            <p className="text-muted-foreground text-xs">
-              Contact your examiner to get started.
-            </p>
-          </Card>
-        : <div className="grid min-w-0 gap-4">
-            <BucketCard
-              title="Available"
-              description="Open now — start or resume."
-              empty="No examinations are open right now."
-              exams={available}
-            />
-            <BucketCard
-              title="Upcoming"
-              description="Scheduled and not yet open."
-              empty="No upcoming examinations."
-              exams={upcoming.slice(0, 5)}
-            />
-            <BucketCard
-              title="Completed"
-              description="Submitted attempts and closed examinations."
-              empty="No completed examinations yet."
-              exams={completed.slice(0, 5)}
-              footer={viewAll}
+            <DashboardTrend
+              variant="percentage"
+              metric="Score"
+              points={releasedScores
+                .slice(-8)
+                .map(({ date, title, score }) => ({
+                  label: format(date, "MMM d"),
+                  detail: `${title} · ${formatDisplayDate(date)}`,
+                  value: Math.round(score * 10) / 10,
+                }))}
             />
           </div>
-        }
-        <Card>
-          <CardHeader>
-            <CardTitle>Assessment progress</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <StatusBreakdown
-              items={[
-                { label: "Upcoming", count: upcoming.length, tone: "info" },
-                {
-                  label: "Ready to start",
-                  count: available.filter(
-                    (exam) => exam.eligibility.action === "start",
-                  ).length,
-                },
-                {
-                  label: "In progress",
-                  count: inProgress.length,
-                  tone: "warning",
-                },
-                {
-                  label: "Closed or completed",
-                  count: completed.length,
-                  tone: "success",
-                },
-              ]}
-            />
-          </CardContent>
-        </Card>
-      </div>
+        ) : (
+          <DashboardEmpty>
+            The score trend appears after you have two released scores.
+          </DashboardEmpty>
+        )}
+      </DashboardSection>
+
+      <DashboardSection id="candidate-activity" title="Recent exam activity">
+        {recentActivity.length ? (
+          <ul>
+            {recentActivity.slice(0, 5).map((exam) => (
+              <ExamRow key={exam.id} exam={exam} />
+            ))}
+          </ul>
+        ) : (
+          <DashboardEmpty>
+            No submissions or closed exams to show yet.
+          </DashboardEmpty>
+        )}
+      </DashboardSection>
     </section>
   );
 };

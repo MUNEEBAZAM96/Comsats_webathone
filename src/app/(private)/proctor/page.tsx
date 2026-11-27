@@ -1,5 +1,6 @@
-import type { Metadata } from "next";
+import type { Metadata, Route } from "next";
 import {
+  ActivityIcon,
   EyeIcon,
   FileTextIcon,
   GraduationCapIcon,
@@ -8,16 +9,16 @@ import {
 import { requireRole } from "@/server/session";
 import { DashboardIntro } from "@/components/Dashboard/DashboardIntro";
 import { DashboardLink } from "@/components/Dashboard/DashboardLink";
-import { StatusBreakdown } from "@/components/Dashboard/StatusBreakdown";
 import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/shadcnui/card";
+  DashboardEmpty,
+  DashboardRow,
+  DashboardSection,
+} from "@/components/Dashboard/DashboardSection";
 import { StatCard } from "@/components/Dashboard/StatCard";
+import { Badge } from "@/components/shadcnui/badge";
 import prisma from "@/lib/database/dbClient";
-import type { Route } from "next";
+import { formatDisplayDateTime } from "@/lib/date/format";
+import { getEffectiveExamStatus } from "@/lib/exam/examStatus";
 import { Suspense } from "react";
 import { DashboardShellSkeleton } from "@/components/Dashboard/DashboardShellSkeleton";
 
@@ -35,176 +36,259 @@ const ProctorDashboardPage = () => (
 const ProctorDashboardContent = async () => {
   const session = await requireRole("proctor");
 
-  const proctorAssignments = await prisma.examProctor.findMany({
+  const assignments = await prisma.examProctor.findMany({
     where: { proctorId: session.user.id },
-    include: {
+    orderBy: [
+      { exam: { startTime: { sort: "asc", nulls: "last" } } },
+      { examId: "asc" },
+    ],
+    select: {
       exam: {
         select: {
           id: true,
           title: true,
           status: true,
+          startTime: true,
+          endTime: true,
           _count: { select: { assignments: true, attempts: true } },
         },
       },
     },
   });
 
-  const examIds = proctorAssignments.map((pa) => pa.examId);
-
-  const inProgressCount =
-    examIds.length > 0 ?
-      await prisma.examAttempt.count({
-        where: { examId: { in: examIds }, status: "in_progress" },
+  const now = new Date();
+  const exams = assignments.map(({ exam }) => ({
+    ...exam,
+    effectiveStatus: getEffectiveExamStatus(exam, now),
+  }));
+  const liveExams = exams.filter(
+    ({ effectiveStatus }) => effectiveStatus === "ongoing",
+  );
+  const upcoming = exams.filter(
+    ({ effectiveStatus }) => effectiveStatus === "published",
+  );
+  const otherExams = exams
+    .filter(
+      ({ effectiveStatus }) =>
+        effectiveStatus === "draft" || effectiveStatus === "completed",
+    )
+    .reverse();
+  const liveAttemptCounts = liveExams.length
+    ? await prisma.examAttempt.groupBy({
+        by: ["examId", "status"],
+        where: {
+          examId: { in: liveExams.map(({ id }) => id) },
+          status: { in: ["in_progress", "submitted", "graded"] },
+        },
+        _count: true,
       })
-    : 0;
+    : [];
+  const attemptsByExam = new Map<
+    string,
+    { active: number; finished: number }
+  >();
 
-  const totalExams = proctorAssignments.length;
-  const totalStudents = proctorAssignments.reduce(
-    (sum, pa) => sum + pa.exam._count.assignments,
+  for (const { examId, status, _count } of liveAttemptCounts) {
+    const counts = attemptsByExam.get(examId) ?? { active: 0, finished: 0 };
+    if (status === "in_progress") counts.active += _count;
+    else counts.finished += _count;
+    attemptsByExam.set(examId, counts);
+  }
+  const highestAttemptCount = liveExams.reduce((max, { id }) => {
+    const counts = attemptsByExam.get(id);
+    return counts ? Math.max(max, counts.active + counts.finished) : max;
+  }, 0);
+
+  const totalCandidates = exams.reduce(
+    (sum, exam) => sum + exam._count.assignments,
     0,
   );
-  const totalAttempts = proctorAssignments.reduce(
-    (sum, pa) => sum + pa.exam._count.attempts,
+  const totalAttempts = exams.reduce(
+    (sum, exam) => sum + exam._count.attempts,
     0,
   );
-
-  const examsWithActivity = proctorAssignments.filter(
-    (pa) => pa.exam.status === "published" && pa.exam._count.attempts > 0,
+  const activeAttempts = [...attemptsByExam.values()].reduce(
+    (sum, counts) => sum + counts.active,
+    0,
   );
 
   return (
-    <section className="grid gap-6">
+    <section className="grid gap-5">
       <DashboardIntro
         title="Proctor overview"
         action={
-          <DashboardLink href="/proctor/exams">
-            <EyeIcon aria-hidden="true" /> Assigned exams
-          </DashboardLink>
-        }>
-        Monitor candidate activity and review your assigned exams.
+          <>
+            <DashboardLink href="/proctor/exams">
+              <EyeIcon aria-hidden="true" /> Assigned exams
+            </DashboardLink>
+            <DashboardLink href="/proctor/results" variant="outline">
+              Results
+            </DashboardLink>
+          </>
+        }
+      >
+        Open a live monitor or check the schedule for your assigned exams.
       </DashboardIntro>
 
-      <div className="dashboard-stats grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
+      <div className="dashboard-stats grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <StatCard
+          icon={<ActivityIcon />}
+          label="Live exams"
+          value={liveExams.length}
+          detail={`${activeAttempts} attempts in progress`}
+        />
         <StatCard
           icon={<FileTextIcon />}
-          label="Assigned Exams"
-          value={totalExams}
+          label="Assigned exams"
+          value={exams.length}
         />
         <StatCard
           icon={<UsersIcon />}
-          label="Total Students"
-          value={totalStudents}
+          label="Candidate assignments"
+          value={totalCandidates}
         />
         <StatCard
           icon={<GraduationCapIcon />}
-          label="Total Attempts"
+          label="Attempts"
           value={totalAttempts}
         />
-        <StatCard
-          icon={<EyeIcon />}
-          label="Active Now"
-          value={inProgressCount}
-        />
       </div>
 
-      <div className="dashboard-section grid gap-4 xl:grid-cols-[minmax(0,1.65fr)_minmax(0,1fr)]">
-        <div className="grid min-w-0 content-start gap-4">
-          {examsWithActivity.length > 0 && (
-            <Card>
-              <CardHeader>
-                <CardTitle>Session activity</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="grid gap-2">
-                  {examsWithActivity.map((pa) => (
-                    <div
-                      key={pa.id}
-                      className="border-border flex flex-wrap items-center justify-between gap-3 rounded-xl border p-4">
-                      <div>
-                        <p className="font-medium">
-                          {pa.exam.title || `Exam ${pa.examId}`}
-                        </p>
-                        <p className="text-muted-foreground text-xs">
-                          {pa.exam._count.assignments} students &middot;{" "}
-                          {pa.exam._count.attempts} attempt(s)
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <DashboardLink
-                          href={`/proctor/exams/${pa.examId}` as Route}
-                          variant="outline">
-                          <EyeIcon aria-hidden="true" /> Monitor
-                        </DashboardLink>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          )}
+      <div className="dashboard-section grid gap-4 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
+        <DashboardSection id="proctor-live" title="Live sessions">
+          {liveExams.length ? (
+            <>
+              {highestAttemptCount > 0 && (
+                <p className="mb-3 text-xs text-muted-foreground">
+                  All bars use a scale of 0 to {highestAttemptCount} attempts.
+                </p>
+              )}
+              <ul>
+                {liveExams.map((exam) => {
+                  const { active, finished } = attemptsByExam.get(exam.id) ?? {
+                    active: 0,
+                    finished: 0,
+                  };
 
-          {totalExams === 0 && (
-            <Card className="p-8 text-center">
-              <p className="text-muted-foreground mb-4">
-                You haven&apos;t been assigned to any exams yet.
-              </p>
-            </Card>
-          )}
-
-          {totalExams > 0 && (
-            <Card>
-              <CardHeader>
-                <CardTitle>Your Assigned Exams</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="grid gap-3">
-                  {proctorAssignments.map((pa) => (
-                    <div
-                      key={pa.id}
-                      className="border-border bg-card flex flex-wrap items-center justify-between gap-3 rounded-xl border p-4">
-                      <div>
-                        <p className="font-medium">
-                          {pa.exam.title || `Exam ${pa.examId}`}
+                  return (
+                    <DashboardRow key={exam.id}>
+                      <div className="min-w-0 flex-1 basis-40">
+                        <p className="wrap-anywhere font-semibold">
+                          {exam.title}
                         </p>
-                        <p className="text-muted-foreground text-xs">
-                          {pa.exam._count.assignments} students &middot;{" "}
-                          {pa.exam._count.attempts} attempt(s)
+                        <p className="text-xs text-muted-foreground">
+                          {exam._count.assignments} assigned
                         </p>
+                        {exam.endTime && (
+                          <p className="text-xs text-muted-foreground">
+                            Closes {formatDisplayDateTime(exam.endTime)}
+                          </p>
+                        )}
                       </div>
                       <DashboardLink
-                        href={`/proctor/exams/${pa.examId}` as Route}
-                        variant="outline">
+                        href={`/proctor/exams/${exam.id}` as Route}
+                        variant="outline"
+                      >
                         <EyeIcon aria-hidden="true" /> Monitor
                       </DashboardLink>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
+                      <div className="grid basis-full gap-2 pb-1">
+                        {highestAttemptCount > 0 && (
+                          <div
+                            aria-hidden="true"
+                            className="flex h-2.5 overflow-hidden rounded-full bg-muted"
+                          >
+                            <span
+                              className="bg-info"
+                              style={{
+                                width: `${(active / highestAttemptCount) * 100}%`,
+                              }}
+                            />
+                            <span
+                              className="bg-success"
+                              style={{
+                                width: `${(finished / highestAttemptCount) * 100}%`,
+                              }}
+                            />
+                          </div>
+                        )}
+                        <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground tabular-nums">
+                          <span className="flex items-center gap-1.5">
+                            <span
+                              aria-hidden="true"
+                              className="size-2 shrink-0 rounded-full bg-info"
+                            />
+                            {active} in progress
+                          </span>
+                          <span className="flex items-center gap-1.5">
+                            <span
+                              aria-hidden="true"
+                              className="size-2 shrink-0 rounded-full bg-success"
+                            />
+                            {finished} submitted or graded
+                          </span>
+                        </div>
+                      </div>
+                    </DashboardRow>
+                  );
+                })}
+              </ul>
+            </>
+          ) : (
+            <DashboardEmpty>
+              No assigned exams are open right now.
+            </DashboardEmpty>
           )}
-        </div>
-        <Card className="self-start">
-          <CardHeader>
-            <CardTitle>Attempt status</CardTitle>
-          </CardHeader>
-          <CardContent className="grid gap-5">
-            <StatusBreakdown
-              items={[
-                { label: "In progress", count: inProgressCount, tone: "info" },
-                {
-                  label: "Other attempts",
-                  count: Math.max(0, totalAttempts - inProgressCount),
-                },
-              ]}
-            />
-            <DashboardLink
-              href="/proctor/results"
-              variant="outline">
-              View results
-            </DashboardLink>
-          </CardContent>
-        </Card>
+        </DashboardSection>
+
+        <DashboardSection id="proctor-upcoming" title="Upcoming sessions">
+          {upcoming.length ? (
+            <ul>
+              {upcoming.slice(0, 4).map((exam) => (
+                <DashboardRow key={exam.id}>
+                  <div className="min-w-0 flex-1 basis-40">
+                    <p className="wrap-anywhere font-semibold">{exam.title}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {exam.startTime && formatDisplayDateTime(exam.startTime)}
+                    </p>
+                  </div>
+                  <Badge variant="secondary">
+                    {exam._count.assignments} assigned
+                  </Badge>
+                </DashboardRow>
+              ))}
+            </ul>
+          ) : (
+            <DashboardEmpty>No upcoming sessions are scheduled.</DashboardEmpty>
+          )}
+        </DashboardSection>
       </div>
+
+      {otherExams.length > 0 && (
+        <DashboardSection id="proctor-other" title="Draft and completed exams">
+          <ul>
+            {otherExams.slice(0, 5).map((exam) => (
+              <DashboardRow key={exam.id}>
+                <div className="min-w-0 flex-1 basis-40">
+                  <p className="wrap-anywhere font-semibold">{exam.title}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {exam._count.assignments} assigned &middot;{" "}
+                    {exam._count.attempts} attempts
+                  </p>
+                </div>
+                <Badge variant="secondary" className="capitalize">
+                  {exam.effectiveStatus}
+                </Badge>
+                <DashboardLink
+                  href={`/proctor/exams/${exam.id}` as Route}
+                  variant="outline"
+                >
+                  Review session
+                </DashboardLink>
+              </DashboardRow>
+            ))}
+          </ul>
+        </DashboardSection>
+      )}
     </section>
   );
 };

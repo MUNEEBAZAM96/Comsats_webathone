@@ -416,28 +416,7 @@
   .workspace-table tbody tr:nth-child(even) { background: color-mix(in srgb, var(--muted) 40%, transparent); }
   .workspace-table tbody tr:focus-within { background: var(--accent); }
 
-  .status-track {
-    height: .45rem;
-    overflow: hidden;
-    border-radius: 999px;
-    background: var(--muted);
-  }
-
-  .status-track > span {
-    display: block;
-    height: 100%;
-    border-radius: inherit;
-    background: var(--track-color, var(--primary));
-    transform-origin: left center;
-    animation: status-fill 540ms var(--ease-standard) both;
-  }
-
   .exam-question-content { animation: surface-in var(--motion-enter) var(--ease-standard) both; }
-}
-
-@keyframes status-fill {
-  from { scale: 0 1; }
-  to { scale: 1 1; }
 }
 
 @media (min-width: 64rem) {

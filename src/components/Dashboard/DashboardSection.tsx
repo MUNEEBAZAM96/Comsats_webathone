@@ -12,14 +12,10 @@ const DashboardSection = ({
   children: ReactNode;
   action?: ReactNode;
 }) => (
-  <section
-    aria-labelledby={id}
-    className="min-w-0">
-    <Card>
+  <section aria-labelledby={id} className="min-w-0">
+    <Card className="h-full gap-4">
       <CardHeader className="flex flex-wrap items-center justify-between gap-2">
-        <h2
-          id={id}
-          className="font-heading text-base font-semibold">
+        <h2 id={id} className="font-heading text-lg font-semibold">
           {title}
         </h2>
         {action}
@@ -35,4 +31,10 @@ const DashboardRow = ({ children }: { children: ReactNode }) => (
   </li>
 );
 
-export { DashboardSection, DashboardRow };
+const DashboardEmpty = ({ children }: { children: ReactNode }) => (
+  <p className="rounded-lg border border-dashed bg-muted/25 px-4 py-5 text-sm text-muted-foreground">
+    {children}
+  </p>
+);
+
+export { DashboardSection, DashboardRow, DashboardEmpty };

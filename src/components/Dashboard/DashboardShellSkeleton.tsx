@@ -1,105 +1,58 @@
 import { Card, CardContent, CardHeader } from "@/components/shadcnui/card";
+import { Skeleton } from "@/components/shadcnui/skeleton";
 
-const StatCardsSkeleton = () => (
-  <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-    {[...Array(4)].map((_, i) => (
-      <Card
-        key={i}
-        className="gap-4 p-5"
-        aria-hidden="true">
-        <div className="flex items-center justify-between gap-3">
-          <div className="h-4 w-24 motion-safe:animate-pulse rounded bg-muted" />
-          <div className="size-10 motion-safe:animate-pulse rounded-md bg-muted" />
+const PanelSkeleton = () => (
+  <Card className="gap-4">
+    <CardHeader>
+      <Skeleton className="h-5 w-32 max-w-full" />
+    </CardHeader>
+    <CardContent className="grid gap-3">
+      {[0, 1, 2].map((row) => (
+        <div
+          key={row}
+          className="flex items-center justify-between gap-3 border-b border-border pb-3 last:border-0 last:pb-0"
+        >
+          <Skeleton className="h-4 w-36 max-w-2/3" />
+          <Skeleton className="h-5 w-12" />
         </div>
-        <div className="h-8 w-14 motion-safe:animate-pulse rounded bg-muted" />
-      </Card>
-    ))}
-  </div>
+      ))}
+    </CardContent>
+  </Card>
 );
 
-const SummaryGridSkeleton = () => (
-  <div className="grid gap-4 sm:grid-cols-2">
-    {[...Array(2)].map((_, i) => (
-      <Card key={i}>
-        <CardHeader>
-          <div className="bg-muted h-5 w-32 motion-safe:animate-pulse rounded" />
-        </CardHeader>
-        <CardContent>
-          <div className="grid gap-3">
-            {[...Array(4)].map((_, j) => (
-              <div
-                key={j}
-                className="flex items-center justify-between">
-                <div className="bg-muted h-3 w-20 motion-safe:animate-pulse rounded" />
-                <div className="bg-muted h-3 w-8 motion-safe:animate-pulse rounded" />
-              </div>
-            ))}
+const DashboardSkeleton = () => (
+  <div
+    aria-label="Loading dashboard data"
+    aria-busy="true"
+    className="grid gap-5"
+  >
+    <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      {[0, 1, 2, 3].map((card) => (
+        <Card key={card} className="gap-2.5 p-3.5 sm:p-4">
+          <div className="flex items-center justify-between gap-2">
+            <Skeleton className="h-4 w-24 max-w-2/3" />
+            <Skeleton className="size-8 shrink-0 sm:size-9" />
           </div>
-        </CardContent>
-      </Card>
-    ))}
-  </div>
-);
-
-const ListCardSkeleton = () => (
-  <div className="grid gap-4 sm:grid-cols-2">
-    {[...Array(2)].map((_, i) => (
-      <Card key={i}>
-        <CardHeader>
-          <div className="bg-muted h-5 w-28 motion-safe:animate-pulse rounded" />
-        </CardHeader>
-        <CardContent>
-          <div className="grid gap-3">
-            {[...Array(5)].map((_, j) => (
-              <div
-                key={j}
-                className="border-border flex items-center justify-between border-b pb-2 last:border-0 last:pb-0">
-                <div className="grid gap-1">
-                  <div className="bg-muted h-3 w-36 motion-safe:animate-pulse rounded" />
-                  <div className="bg-muted h-2 w-24 motion-safe:animate-pulse rounded" />
-                </div>
-                <div className="bg-muted h-5 w-16 motion-safe:animate-pulse rounded-full" />
-              </div>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
-    ))}
+          <Skeleton className="h-8 w-12 sm:h-9" />
+        </Card>
+      ))}
+    </div>
+    <div className="grid gap-4 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
+      <PanelSkeleton />
+      <PanelSkeleton />
+    </div>
+    <PanelSkeleton />
   </div>
 );
 
 const DashboardShellSkeleton = () => (
-  <section className="grid gap-8">
-    <div className="grid gap-2">
-      <div className="bg-muted h-8 w-48 motion-safe:animate-pulse rounded" />
-      <div className="bg-muted h-4 w-full max-w-64 motion-safe:animate-pulse rounded" />
+  <div className="grid gap-5">
+    <div className="dashboard-intro grid gap-2 rounded-xl border px-5 py-5 sm:px-6">
+      <Skeleton className="h-8 w-48 max-w-full" />
+      <Skeleton className="h-4 w-64 max-w-full" />
     </div>
-    <StatCardsSkeleton />
-    <SummaryGridSkeleton />
-    <ListCardSkeleton />
-  </section>
+    <DashboardSkeleton />
+  </div>
 );
 
-const DashboardSkeleton = () => (
-  <>
-    <StatCardsSkeleton />
-    <SummaryGridSkeleton />
-    <ListCardSkeleton />
-  </>
-);
-
-const ActivityDashboardSkeleton = () => (
-  <section
-    aria-busy="true"
-    aria-label="Loading dashboard"
-    className="grid gap-6">
-    <div className="h-24 rounded-lg border bg-secondary" />
-    <div className="grid gap-3 rounded-lg border bg-card p-5 motion-safe:animate-pulse">
-      <div className="h-5 w-28 rounded bg-muted" />
-      <div className="h-4 w-48 max-w-full rounded bg-muted" />
-    </div>
-    <StatCardsSkeleton />
-  </section>
-);
-
-export { ActivityDashboardSkeleton, DashboardShellSkeleton, DashboardSkeleton };
+export { DashboardShellSkeleton, DashboardSkeleton };
