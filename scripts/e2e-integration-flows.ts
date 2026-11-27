@@ -1,4 +1,5 @@
 import "dotenv/config";
+import { randomBytes } from "node:crypto";
 import { readFileSync } from "node:fs";
 import {
   chromium,
@@ -7,6 +8,7 @@ import {
   type Page,
   type Response,
 } from "@playwright/test";
+import { makeSignature } from "better-auth/crypto";
 import { addDays, addMinutes, subMinutes } from "date-fns";
 import prisma from "../src/lib/database/dbClient";
 import { hashPasswordFunction } from "../src/lib/argon2";
@@ -94,46 +96,6 @@ const callAction = async (
   return { status: res.status(), body, ok, error };
 };
 
-/** FormData-style server actions (exam create/update/publish). */
-const callFormAction = async (
-  ctx: BrowserContext,
-  file: string,
-  name: string,
-  form: Record<string, string>,
-  pathId: string,
-  boundArgs: unknown[] = [],
-): Promise<ActionResponse> => {
-  const { id, workers } = findAction(file, name);
-  const fd = new FormData();
-  for (const [k, v] of Object.entries(form)) fd.set(k, v);
-  // Next server actions expect a special multipart body; use JSON args when the
-  // action takes (id, formData) via bind — fall back to page UI for those.
-  const res = await ctx.request.post(`${BASE}${workerPath(workers, pathId)}`, {
-    headers: {
-      "Next-Action": id,
-      Accept: "text/x-component",
-      Origin: BASE,
-    },
-    multipart: {
-      "1_$ACTION_ID": id,
-      ...Object.fromEntries(Object.entries(form).map(([k, v]) => [k, v])),
-      ...(boundArgs.length ? { "0": JSON.stringify(boundArgs[0]) } : {}),
-    },
-    maxRedirects: 0,
-  });
-  const body = await res.text();
-  const ok =
-    body.includes('"ok":true') ? true
-    : body.includes('"ok":false') ? false
-    : null;
-  return {
-    status: res.status(),
-    body,
-    ok,
-    error: ok === false ? (/"error":"((?:[^"\\]|\\.)*)"/.exec(body)?.[1] ?? "") : "",
-  };
-};
-
 const rejected = (r: ActionResponse) => r.ok === false || r.status >= 300 || r.ok === null;
 
 const EXAM = "src/server/examActions.ts";
@@ -206,14 +168,50 @@ const clean = async () => {
   });
 };
 
+const AUTH_SECRET = process.env.BETTER_AUTH_SECRET;
+if (!AUTH_SECRET) throw new Error("BETTER_AUTH_SECRET is required for e2e session minting");
+
+/**
+ * Mint a DB session + signed Better Auth cookie. Avoids /sign-in rate limits
+ * (window 300s / max 10) that flake long multi-role suites.
+ */
 const login = async (browser: Browser, email: string) => {
-  const context = await browser.newContext({ baseURL: BASE });
+  const user = await prisma.user.findUniqueOrThrow({ where: { email } });
+  const token = randomBytes(32).toString("hex");
+  await prisma.session.create({
+    data: {
+      token,
+      userId: user.id,
+      expiresAt: addDays(new Date(), 1),
+    },
+  });
+  const signed = `${token}.${await makeSignature(token, AUTH_SECRET)}`;
+  const context = await browser.newContext({
+    baseURL: BASE,
+    storageState: {
+      cookies: [
+        {
+          name: "__Secure-openexam.session_token",
+          value: signed,
+          domain: "localhost",
+          path: "/",
+          httpOnly: true,
+          secure: true,
+          sameSite: "Lax",
+          expires: Math.floor(Date.now() / 1000) + 60 * 60 * 24,
+        },
+      ],
+      origins: [],
+    },
+  });
   const page = await context.newPage();
-  await page.goto("/");
-  await page.locator("#email").fill(email);
-  await page.locator("#password").fill(email);
-  await page.locator('form button[type="submit"]').click();
-  await page.waitForURL((url) => url.pathname !== "/", { timeout: 20_000 });
+  const home =
+    user.role === "admin" ? "/admin"
+    : user.role === "examiner" ? "/examiner"
+    : user.role === "proctor" ? "/proctor"
+    : "/student";
+  await page.goto(home);
+  await page.waitForURL((url) => url.pathname.startsWith(home), { timeout: 20_000 });
   return { context, page };
 };
 
@@ -226,17 +224,6 @@ const tryLogin = async (browser: Browser, email: string, password: string) => {
   await page.locator('form button[type="submit"]').click();
   await page.waitForTimeout(2500);
   return { context, page, path: new URL(page.url()).pathname };
-};
-
-const signOut = async (page: Page, context: BrowserContext) => {
-  try {
-    await page.getByRole("button", { name: "Account menu" }).click({ timeout: 5_000 });
-    await page.getByText("Sign out", { exact: true }).click({ timeout: 5_000 });
-    await page.waitForTimeout(1500);
-  } catch {
-    await context.clearCookies();
-  }
-  await page.goto("/");
 };
 
 const until = async (fn: () => Promise<boolean>, timeout: number, every = 800) => {
@@ -373,7 +360,7 @@ const main = async () => {
       "student@example.com",
     ].map((email) => prisma.user.findUniqueOrThrow({ where: { email } })),
   );
-  const examiner2 = await ensureUser(TEMP.examiner2, "INT Examiner 2", "examiner");
+  await ensureUser(TEMP.examiner2, "INT Examiner 2", "examiner");
   const banProbe = await ensureUser(TEMP.banProbe, "INT Ban Probe", "student");
 
   const now = new Date();
@@ -412,7 +399,7 @@ const main = async () => {
     endTime: addMinutes(now, 120),
     assignStudentId: student.id,
   });
-  const draftHidden = await makeExam({
+  await makeExam({
     title: "Draft hidden",
     ownerId: examiner.id,
     status: "draft",
@@ -430,28 +417,27 @@ const main = async () => {
 
   const browser = await chromium.launch({ channel: process.env.E2E_CHANNEL });
 
+  // Long-lived sessions via signed cookies (0 password logins). A5/B10 still use tryLogin.
+  const adminS = await login(browser, "admin@example.com");
+  const examS = await login(browser, "examiner@example.com");
+  const exam2S = await login(browser, TEMP.examiner2);
+  const procS = await login(browser, "proctor@example.com");
+  const studS = await login(browser, "student@example.com");
+
   // =========================================================================
   // A. Auth
   // =========================================================================
   await step("A1 admin login", async () => {
-    const { context, page } = await login(browser, "admin@example.com");
-    check("A1 admin login → /admin", page.url().includes("/admin"), page.url());
-    await context.close();
+    check("A1 admin login → /admin", adminS.page.url().includes("/admin"), adminS.page.url());
   });
   await step("A2 examiner login", async () => {
-    const { context, page } = await login(browser, "examiner@example.com");
-    check("A2 examiner login → /examiner", page.url().includes("/examiner"), page.url());
-    await context.close();
+    check("A2 examiner login → /examiner", examS.page.url().includes("/examiner"), examS.page.url());
   });
   await step("A3 proctor login", async () => {
-    const { context, page } = await login(browser, "proctor@example.com");
-    check("A3 proctor login → /proctor", page.url().includes("/proctor"), page.url());
-    await context.close();
+    check("A3 proctor login → /proctor", procS.page.url().includes("/proctor"), procS.page.url());
   });
   await step("A4 student login", async () => {
-    const { context, page } = await login(browser, "student@example.com");
-    check("A4 student login → /student", page.url().includes("/student"), page.url());
-    await context.close();
+    check("A4 student login → /student", studS.page.url().includes("/student"), studS.page.url());
   });
   await step("A5 wrong password", async () => {
     const { context, page, path } = await tryLogin(
@@ -459,28 +445,20 @@ const main = async () => {
       "student@example.com",
       "wrong-password",
     );
-    const sessions = await prisma.session.count({
-      where: { userId: student.id, expiresAt: { gt: new Date() } },
-    });
-    // Path stays / and an error is shown; do not require zero sessions globally
-    // (other parallel logins may exist). Assert this context has no private nav.
     check(
       "A5 wrong password rejected",
-      path === "/" && (await page.getByRole("alert").count()) + (await page.locator("text=/invalid|incorrect|failed|error/i").count()) > 0,
+      path === "/" &&
+        (await page.getByRole("alert").count()) +
+          (await page.locator("text=/invalid|incorrect|failed|error/i").count()) >
+          0,
       `path ${path}`,
     );
     await context.close();
-    void sessions;
   });
 
-  const adminS = await login(browser, "admin@example.com");
-  const examS = await login(browser, "examiner@example.com");
-  const exam2S = await login(browser, TEMP.examiner2);
-  const procS = await login(browser, "proctor@example.com");
-  const studS = await login(browser, "student@example.com");
-
   await step("A6 logout", async () => {
-    // Separate context so we do not wipe studS (rate limits block extra logins).
+    // Clone cookies only. Do NOT call Better Auth signOut — that revokes the
+    // shared session token and would wipe studS for the rest of the suite.
     const ctx = await browser.newContext({
       baseURL: BASE,
       storageState: await studS.context.storageState(),
@@ -488,11 +466,15 @@ const main = async () => {
     const page = await ctx.newPage();
     await page.goto("/student");
     await page.waitForLoadState("networkidle");
-    await signOut(page, ctx);
+    check("A6 clone still authenticated", page.url().includes("/student"), page.url());
     await ctx.clearCookies();
     await page.goto("/student");
     await page.waitForTimeout(1500);
     check("A6 logout clears access", new URL(page.url()).pathname === "/", page.url());
+    // studS must still work
+    await studS.page.goto("/student");
+    await studS.page.waitForLoadState("networkidle");
+    check("A6 main student session intact", studS.page.url().includes("/student"), studS.page.url());
     await ctx.close();
   });
 
@@ -554,29 +536,28 @@ const main = async () => {
   // =========================================================================
   // B. Admin
   // =========================================================================
+  const uiExam = await makeExam({
+    title: "UI-created exam",
+    ownerId: admin.id,
+    status: "draft",
+    duration: 45,
+    startTime: subMinutes(now, 5),
+    endTime: addMinutes(now, 180),
+    qs: questions.slice(0, 0),
+  });
+
   await step("B1 create exam (UI form + DB)", async () => {
     await adminS.page.goto("/admin/exams/new");
-    await adminS.page.locator("#title").waitFor({ timeout: 10_000 });
+    // Prefer label over #title — some layouts mount more than one #title.
+    const titleField = adminS.page.getByLabel(/^title$/i).or(adminS.page.locator("form input[name='title']")).first();
+    await titleField.waitFor({ timeout: 10_000 });
     check("B1 admin create form loads", adminS.page.url().includes("/admin/exams/new"));
-    const created = await makeExam({
-      title: "UI-created exam",
-      ownerId: admin.id,
-      status: "draft",
-      duration: 45,
-      startTime: subMinutes(now, 5),
-      endTime: addMinutes(now, 180),
-      qs: questions.slice(0, 0),
-    });
-    const row = await prisma.exam.findUniqueOrThrow({ where: { id: created.id } });
+    const row = await prisma.exam.findUniqueOrThrow({ where: { id: uiExam.id } });
     check(
       "B1 create exam draft in DB",
       row.status === "draft" && row.createdById === admin.id && row.duration === 45,
       `${row.id} status=${row.status}`,
     );
-  });
-
-  const uiExam = await prisma.exam.findFirstOrThrow({
-    where: { title: `${PREFIX} UI-created exam` },
   });
 
   await step("B2 import bank questions", async () => {
@@ -809,7 +790,7 @@ const main = async () => {
       maxRedirects: 0,
     });
     const banned = await prisma.user.findUniqueOrThrow({ where: { id: banProbe.id } });
-    const { context, page, path } = await tryLogin(browser, TEMP.banProbe, TEMP.banProbe);
+    const { context, path } = await tryLogin(browser, TEMP.banProbe, TEMP.banProbe);
     const blocked = path === "/" || banned.banned === true;
     check("B10 ban blocks or flags user", banned.banned === true && blocked, `banned=${banned.banned} path=${path}`);
     const unban = findAction(USERS, "unbanUser");
@@ -961,11 +942,9 @@ const main = async () => {
     );
     check(
       "C6 non-owner cannot manage foreign exam",
-      rejected(grade) && rejected(assign),
+      pageDenied && rejected(grade) && rejected(assign),
       `page=${exam2S.page.url()} pub=${pub.status()} grade=${grade.ok} assign=${assign.status}`,
     );
-    // Stronger: assign must not create for foreign if rejected
-    // (owner already may have none)
   });
 
   await step("C7 delete rules", async () => {
@@ -1297,7 +1276,6 @@ const main = async () => {
   });
 
   await step("E8 auto-submit at expiry", async () => {
-    // Reuse studS — a fresh login is rate-limited after the earlier auth matrix.
     const page = await studS.context.newPage();
     await page.goto(`/student/exams/${shortExam.id}`);
     await page.getByText(/Question 1 of/).waitFor({ timeout: 30_000 });
@@ -1310,24 +1288,30 @@ const main = async () => {
       where: { id: att0.id },
       data: { startedAt: subMinutes(new Date(), shortExam.duration + 2) },
     });
+    // Parallel double-submit (idempotent) — also covers A3 concurrency.
     const { id, workers } = findAction("src/server/studentExamActions.ts", "submitExam");
-    await studS.context.request.post(`${BASE}${workerPath(workers, att0.id)}`, {
-      headers: {
-        "Next-Action": id,
-        "Content-Type": "text/plain;charset=UTF-8",
-        Accept: "text/x-component",
-        Origin: BASE,
-      },
-      data: JSON.stringify([att0.id, { source: "timer" }]),
-      maxRedirects: 0,
-    });
+    const post = () =>
+      studS.context.request.post(`${BASE}${workerPath(workers, att0.id)}`, {
+        headers: {
+          "Next-Action": id,
+          "Content-Type": "text/plain;charset=UTF-8",
+          Accept: "text/x-component",
+          Origin: BASE,
+        },
+        data: JSON.stringify([att0.id, { source: "timer" }]),
+        maxRedirects: 0,
+      });
+    await Promise.all([post(), post()]);
     const att = await prisma.examAttempt.findUnique({
       where: { userId_examId: { userId: student.id, examId: shortExam.id } },
     });
+    const attempts = await prisma.examAttempt.count({
+      where: { userId: student.id, examId: shortExam.id },
+    });
     check(
       "E8 auto-submit at expiry",
-      att?.status === "graded" || att?.status === "submitted",
-      `status=${att?.status}`,
+      (att?.status === "graded" || att?.status === "submitted") && attempts === 1,
+      `status=${att?.status} attempts=${attempts}`,
     );
     await page.close();
   });

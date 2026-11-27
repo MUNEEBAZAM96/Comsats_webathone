@@ -1,4 +1,5 @@
 import "dotenv/config";
+import { randomBytes } from "node:crypto";
 import { readFileSync } from "node:fs";
 import {
   chromium,
@@ -7,7 +8,8 @@ import {
   type Page,
   type Response,
 } from "@playwright/test";
-import { addMinutes, subHours, subMinutes, subSeconds } from "date-fns";
+import { makeSignature } from "better-auth/crypto";
+import { addDays, addMinutes, subHours, subMinutes, subSeconds } from "date-fns";
 import prisma from "../src/lib/database/dbClient";
 import { hashPasswordFunction } from "../src/lib/argon2";
 import { buildQuestionGradingFields } from "../src/lib/exam/markingScheme";
@@ -246,14 +248,42 @@ const createFixtures = async () => {
 // Browser helpers
 // ---------------------------------------------------------------------------
 
+const AUTH_SECRET = process.env.BETTER_AUTH_SECRET;
+if (!AUTH_SECRET) throw new Error("BETTER_AUTH_SECRET is required for e2e session minting");
+
 const login = async (browser: Browser, email: string) => {
-  const context = await browser.newContext({ baseURL: BASE });
+  const user = await prisma.user.findUniqueOrThrow({ where: { email } });
+  const token = randomBytes(32).toString("hex");
+  await prisma.session.create({
+    data: { token, userId: user.id, expiresAt: addDays(new Date(), 1) },
+  });
+  const signed = `${token}.${await makeSignature(token, AUTH_SECRET)}`;
+  const context = await browser.newContext({
+    baseURL: BASE,
+    storageState: {
+      cookies: [
+        {
+          name: "__Secure-openexam.session_token",
+          value: signed,
+          domain: "localhost",
+          path: "/",
+          httpOnly: true,
+          secure: true,
+          sameSite: "Lax",
+          expires: Math.floor(Date.now() / 1000) + 60 * 60 * 24,
+        },
+      ],
+      origins: [],
+    },
+  });
   const page = await context.newPage();
-  await page.goto("/");
-  await page.locator("#email").fill(email);
-  await page.locator("#password").fill(email);
-  await page.locator('form button[type="submit"]').click();
-  await page.waitForURL((url) => url.pathname !== "/", { timeout: 20_000 });
+  const home =
+    user.role === "admin" ? "/admin"
+    : user.role === "examiner" ? "/examiner"
+    : user.role === "proctor" ? "/proctor"
+    : "/student";
+  await page.goto(home);
+  await page.waitForURL((url) => url.pathname.startsWith(home), { timeout: 20_000 });
   return { context, page };
 };
 
