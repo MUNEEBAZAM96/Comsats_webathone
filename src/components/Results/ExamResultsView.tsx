@@ -1,6 +1,7 @@
 import { Button } from "@/components/shadcnui/button";
 import { PublishResultsControls } from "@/components/Grading/PublishResultsControls";
 import ResultSettingsForm from "@/components/Grading/ResultSettingsForm";
+import { ResponsiveTable } from "@/components/Workspace/ResponsiveTable";
 import type { ResultReveal } from "@/lib/zodSchema";
 import { SUBMIT_SOURCE_LABEL } from "@/components/Monitoring/labels";
 import { PctBadge } from "@/components/Results/PctBadge";
@@ -96,7 +97,7 @@ export const ExamResultsView = async ({
             Students haven&apos;t submitted any attempts for this exam.
           </p>
         </div>
-      : <div className="border-border overflow-x-auto rounded-3xl border">
+      : <ResponsiveTable aria-label="Exam results">
           <table className="w-full min-w-[52rem] text-sm">
             <thead>
               <tr className="border-border bg-muted/50 border-b text-left">
@@ -159,7 +160,7 @@ export const ExamResultsView = async ({
               ))}
             </tbody>
           </table>
-        </div>
+        </ResponsiveTable>
       }
     </section>
   );

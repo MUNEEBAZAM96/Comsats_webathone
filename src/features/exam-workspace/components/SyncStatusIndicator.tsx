@@ -50,6 +50,10 @@ export const SyncStatusIndicator = ({
   let tone = "text-muted-foreground";
 
   switch (snapshot.state) {
+    case "restoring":
+      icon = <Loader2Icon aria-hidden="true" className="size-4 animate-spin" />;
+      label = "Restoring saved answers…";
+      break;
     case "pending":
     case "saving":
       icon = <Loader2Icon aria-hidden="true" className="size-4 animate-spin" />;

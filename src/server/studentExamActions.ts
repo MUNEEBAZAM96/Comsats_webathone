@@ -465,6 +465,12 @@ const applyAnswerItems = async (
         const status = await lockAttempt(tx, attemptId);
         if (status !== "in_progress") throw new AttemptNotInProgressError();
         if (closed()) throw new DeadlinePassedError();
+        // Staff may have completed the exam since `exam` was loaded.
+        const current = await tx.exam.findUnique({
+          where: { id: exam.id },
+          select: { status: true },
+        });
+        if (current?.status !== "published") throw new DeadlinePassedError();
 
         // Every writer of answer text holds the attempt row lock, so one read
         // here is consistent for the rest of the transaction.

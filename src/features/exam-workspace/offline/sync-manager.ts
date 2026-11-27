@@ -12,6 +12,7 @@ import {
 } from "./answer-storage";
 
 export type SyncState =
+  | "restoring"
   | "synced"
   | "pending"
   | "saving"
@@ -74,6 +75,8 @@ export type QueueOptions = {
   /** Server will accept no more writes (deadline, submitted, signed out). */
   onClosed?: (reason: SaveAnswersFailure, message: string) => void;
   onNetworkResult?: (ok: boolean) => void;
+  /** Report "restoring" (never "synced") until `prime` has run. */
+  awaitPrime?: boolean;
   debounceMs?: number;
   now?: () => number;
   random?: () => number;
@@ -131,11 +134,13 @@ export const createAnswerSyncQueue = (options: QueueOptions) => {
   let closedReason: SaveAnswersFailure | null = null;
   let storageAvailable = true;
   let stopped = false;
+  let primed = !options.awaitPrime;
 
   const compute = (): SyncSnapshot => {
     let state: SyncState;
     if (closedReason) state = "closed";
     else if (inFlight) state = "saving";
+    else if (!primed) state = "restoring";
     else if (pending.size === 0) state = "synced";
     else if (!isOnline()) state = "offline";
     else if (fatal || failures >= ERROR_AFTER_FAILURES) state = "error";
@@ -324,6 +329,7 @@ export const createAnswerSyncQueue = (options: QueueOptions) => {
       });
       accepted.push({ questionId: row.questionId, text: row.text });
     }
+    primed = true;
     emit();
     return accepted;
   };

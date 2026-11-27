@@ -1,5 +1,6 @@
 "use client";
 
+import { ResponsiveTable } from "@/components/Workspace/ResponsiveTable";
 import {
   ActivityIcon,
   ClipboardCheckIcon,
@@ -84,7 +85,7 @@ const ExamsTable = ({ exams, basePath }: ExamsTableProps) => {
   }
 
   return (
-    <div className="border-border overflow-x-auto rounded-3xl border">
+    <ResponsiveTable aria-label="Exams">
       <table className="w-full text-sm">
         <thead>
           <tr className="border-border bg-muted/50 border-b">
@@ -131,9 +132,7 @@ const ExamsTable = ({ exams, basePath }: ExamsTableProps) => {
                     <Button
                       variant="outline"
                       size="icon-lg">
-                      {loadingId === exam.id ?
-                        <Loader2Icon className="size-4 animate-spin" />
-                      : <EyeIcon className="size-4" />}
+                      <EyeIcon className="size-4" />
                     </Button>
                   </Link>
                   {exam.status !== "draft" && (
@@ -176,7 +175,12 @@ const ExamsTable = ({ exams, basePath }: ExamsTableProps) => {
                         size="lg"
                         onClick={() => handlePublish(exam.id)}
                         disabled={loadingId === exam.id}>
-                        Publish
+                        {loadingId === exam.id ?
+                          <>
+                            <Loader2Icon className="size-4 motion-safe:animate-spin" />
+                            Publishing…
+                          </>
+                        : "Publish"}
                       </Button>
                     </>
                   )}
@@ -231,7 +235,7 @@ const ExamsTable = ({ exams, basePath }: ExamsTableProps) => {
           ))}
         </tbody>
       </table>
-    </div>
+    </ResponsiveTable>
   );
 };
 

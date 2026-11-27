@@ -1,48 +1,29 @@
-import AuthTestBanner from "@/components/Auth/AuthTestBanner";
+import { AuthHeading } from "@/components/Auth/AuthHeading";
 import RegisterForm from "@/components/Auth/RegisterForm";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from "@/components/shadcnui/card";
-import { Metadata } from "next";
+import type { Metadata } from "next";
 import Link from "next/link";
 
 export const metadata: Metadata = {
   title: "Create an account",
-  description: "Create an account to get started",
+  description: "Create an ExamGuard candidate account",
 };
 
-const RegisterPage = () => {
-  return (
-    <section className="grid h-dvh place-items-center">
-      <Card className="w-xs sm:w-sm">
-        <CardHeader className="text-center">
-          <CardTitle className="text-xl">Create an account</CardTitle>
-          <CardDescription>Create an account to get started</CardDescription>
-        </CardHeader>
-
-        <CardContent className="grid gap-4">
-          <AuthTestBanner />
-          <RegisterForm />
-        </CardContent>
-
-        <CardFooter className="justify-center">
-          <div className="flex justify-center gap-1">
-            Already have an account?
-            <Link
-              href="/"
-              className="hover:underline">
-              Sign in
-            </Link>
-          </div>
-        </CardFooter>
-      </Card>
-    </section>
-  );
-};
+const RegisterPage = () => (
+  <section className="auth-entry grid">
+    <AuthHeading
+      title="Create an account"
+      description="Set up your candidate account to take exams and view your results."
+    />
+    <RegisterForm />
+    <p className="border-t pt-3 sm:pt-4 text-center text-sm text-muted-foreground">
+      Already have an account?{" "}
+      <Link
+        href="/"
+        className="font-semibold text-primary underline-offset-4 hover:underline">
+        Sign in
+      </Link>
+    </p>
+  </section>
+);
 
 export default RegisterPage;

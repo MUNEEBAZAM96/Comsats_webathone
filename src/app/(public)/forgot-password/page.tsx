@@ -1,47 +1,28 @@
-import AuthTestBanner from "@/components/Auth/AuthTestBanner";
+import { AuthHeading } from "@/components/Auth/AuthHeading";
 import ForgotPasswordForm from "@/components/Auth/ForgotPasswordForm";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from "@/components/shadcnui/card";
-import { Metadata } from "next";
+import type { Metadata } from "next";
 import Link from "next/link";
 
 export const metadata: Metadata = {
   title: "Forgot password",
-  description: "Reset your password",
+  description: "Request a password reset for your ExamGuard account",
 };
 
-const ForgotPasswordPage = () => {
-  return (
-    <section className="grid h-dvh place-items-center">
-      <Card className="w-xs sm:w-sm">
-        <CardHeader className="text-center">
-          <CardTitle className="text-xl">Forgot password</CardTitle>
-          <CardDescription>
-            Enter your email and we&apos;ll send you a reset link
-          </CardDescription>
-        </CardHeader>
-
-        <CardContent className="grid gap-4">
-          <AuthTestBanner />
-          <ForgotPasswordForm />
-        </CardContent>
-
-        <CardFooter className="justify-center">
-          <Link
-            href="/"
-            className="text-muted-foreground text-xs hover:underline">
-            Back to sign in
-          </Link>
-        </CardFooter>
-      </Card>
-    </section>
-  );
-};
+const ForgotPasswordPage = () => (
+  <section className="grid gap-6">
+    <AuthHeading
+      title="Forgot password?"
+      description="Enter the email address associated with your account."
+    />
+    <ForgotPasswordForm />
+    <p className="border-t pt-5 text-center text-sm">
+      <Link
+        href="/"
+        className="font-semibold text-primary underline-offset-4 hover:underline">
+        Back to sign in
+      </Link>
+    </p>
+  </section>
+);
 
 export default ForgotPasswordPage;

@@ -3,7 +3,13 @@
 import Link from "next/link";
 import { useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { LogOutIcon, SettingsIcon } from "lucide-react";
+import {
+  ChevronDownIcon,
+  Loader2Icon,
+  LogOutIcon,
+  SettingsIcon,
+} from "lucide-react";
+import { toast } from "sonner";
 import {
   SidebarProvider,
   SidebarInset,
@@ -25,6 +31,7 @@ import {
   DropdownMenuGroup,
   DropdownMenuSeparator,
 } from "@/components/shadcnui/dropdown-menu";
+import { RouteReveal } from "@/components/Providers/RouteReveal";
 import { AppSidebar } from "./AppSidebar";
 import { getPageTitle, type NavGroup } from "./nav-config";
 import { authClient } from "@/lib/auth-client";
@@ -49,12 +56,24 @@ const SidebarLayout = ({
   const pathname = usePathname();
   const isTablet = useIsTablet();
   const [sidebarOpen, setSidebarOpen] = useState<boolean | null>(null);
+  const [signingOut, setSigningOut] = useState(false);
   const roleLabel = roleLabels[groups[0]?.items[0]?.url] ?? "Workspace";
   const pageTitle = getPageTitle(pathname, groups);
 
   const handleSignOut = async () => {
-    await authClient.signOut();
-    router.push("/");
+    setSigningOut(true);
+    try {
+      const { error } = await authClient.signOut();
+      if (error) throw new Error(error.message ?? "Failed to sign out");
+      toast.success("Signed out");
+      router.push("/");
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "Failed to sign out",
+      );
+    } finally {
+      setSigningOut(false);
+    }
   };
 
   const initials =
@@ -69,7 +88,8 @@ const SidebarLayout = ({
     "?";
 
   const isExamWorkspace = /^\/student\/exams\/[^/]+\/?$/.test(pathname);
-  if (isExamWorkspace) return <main>{children}</main>;
+  if (isExamWorkspace)
+    return <main className="exam-workspace">{children}</main>;
 
   return (
     <SidebarProvider
@@ -79,8 +99,13 @@ const SidebarLayout = ({
         groups={groups}
         roleLabel={roleLabel}
       />
-      <SidebarInset className="min-w-0">
-        <header className="sticky top-0 z-10 flex h-16 shrink-0 items-center gap-3 border-b bg-card px-4 lg:px-8">
+      <a
+        href="#workspace-content"
+        className="workspace-skip">
+        Skip to content
+      </a>
+      <SidebarInset className="workspace-shell min-w-0">
+        <header className="workspace-topbar sticky top-0 z-10 flex min-h-16 shrink-0 items-center gap-2 border-b px-3 sm:gap-3 sm:px-6 lg:px-8">
           <SidebarTrigger className="-ml-1 size-11 shrink-0" />
           <Separator
             orientation="vertical"
@@ -88,24 +113,33 @@ const SidebarLayout = ({
           />
           <div className="min-w-0">
             <p
-              className="truncate text-sm font-semibold"
+              className="truncate font-heading text-sm font-bold sm:text-base"
               title={pageTitle}>
               {pageTitle}
             </p>
-            <p className="text-xs text-muted-foreground">{roleLabel}</p>
+            <p className="truncate text-xs text-muted-foreground">
+              {roleLabel}
+            </p>
           </div>
           <div className="ml-auto flex shrink-0 items-center gap-2 sm:gap-3">
             <ThemeToggleButton />
             <DropdownMenu>
               <DropdownMenuTrigger
                 aria-label="Account menu"
-                className="grid size-11 place-items-center rounded-md focus-visible:outline-2">
+                className="workspace-account inline-flex min-h-11 min-w-11 items-center justify-center gap-2 rounded-lg border px-1.5 focus-visible:outline-2 sm:px-2.5">
                 <Avatar
                   size="sm"
                   className="cursor-pointer">
                   <AvatarImage src={session?.user?.image ?? undefined} />
                   <AvatarFallback>{initials}</AvatarFallback>
                 </Avatar>
+                <span className="hidden max-w-32 truncate text-sm font-semibold md:block">
+                  {session?.user?.name ?? "Account"}
+                </span>
+                <ChevronDownIcon
+                  aria-hidden="true"
+                  className="hidden size-4 text-muted-foreground sm:block"
+                />
               </DropdownMenuTrigger>
               <DropdownMenuContent
                 align="end"
@@ -143,17 +177,24 @@ const SidebarLayout = ({
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
                   className="cursor-pointer"
+                  disabled={signingOut}
+                  aria-busy={signingOut}
                   onClick={handleSignOut}>
-                  <LogOutIcon />
-                  Sign out
+                  {signingOut ?
+                    <Loader2Icon className="motion-safe:animate-spin" />
+                  : <LogOutIcon />}
+                  {signingOut ? "Signing out…" : "Sign out"}
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
         </header>
-        <div className="mx-auto flex w-full max-w-[94rem] flex-1 flex-col gap-6 p-4 sm:p-6 lg:p-8">
+        <RouteReveal
+          id="workspace-content"
+          tabIndex={-1}
+          className="workspace-content mx-auto flex w-full max-w-[100rem] min-w-0 flex-1 flex-col gap-6 p-4 sm:p-6 lg:p-8">
           {children}
-        </div>
+        </RouteReveal>
       </SidebarInset>
     </SidebarProvider>
   );

@@ -1,6 +1,12 @@
 "use client";
 
-import { Loader2Icon, PlusIcon, SearchIcon, Trash2Icon, XIcon } from "lucide-react";
+import {
+  Loader2Icon,
+  PlusIcon,
+  SearchIcon,
+  Trash2Icon,
+  XIcon,
+} from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { assignExam, unassignExam } from "@/server/assignmentActions";
@@ -138,12 +144,10 @@ const AssignStudents = ({
           {assignments.map((a) => (
             <div
               key={a.userId}
-              className="border-border bg-card flex items-center justify-between gap-4 rounded-3xl border p-4">
-              <div className="grid min-w-0 gap-0.5">
-                <span className="truncate text-sm font-medium">
-                  {a.user.name}
-                </span>
-                <span className="text-muted-foreground truncate text-xs">
+              className="border-border bg-card flex flex-wrap items-center justify-between gap-3 rounded-xl border p-4">
+              <div className="grid min-w-0 flex-1 basis-44 gap-0.5 wrap-anywhere">
+                <span className="text-sm font-medium">{a.user.name}</span>
+                <span className="text-muted-foreground text-xs">
                   {a.user.email}
                 </span>
               </div>
@@ -161,8 +165,15 @@ const AssignStudents = ({
                   onClick={() => setPendingRemoval(a)}
                   disabled={removing === a.userId || Boolean(a.attemptStatus)}>
                   {removing === a.userId ?
-                    <Loader2Icon className="size-4 animate-spin" />
-                  : <Trash2Icon className="text-destructive size-4" />}
+                    <Loader2Icon
+                      aria-hidden="true"
+                      className="size-4 motion-safe:animate-spin"
+                    />
+                  : <Trash2Icon
+                      aria-hidden="true"
+                      className="text-destructive size-4"
+                    />
+                  }
                 </Button>
               </div>
             </div>
@@ -236,7 +247,10 @@ const AssignStudents = ({
               disabled={selected.size === 0 || loading}
               size="lg">
               {loading ?
-                <Loader2Icon className="size-4 animate-spin" />
+                <Loader2Icon
+                  aria-hidden="true"
+                  className="size-4 motion-safe:animate-spin"
+                />
               : <PlusIcon className="size-4" />}
               Assign Selected ({selected.size})
             </Button>
@@ -269,7 +283,8 @@ const AssignStudents = ({
         <p className="text-muted-foreground text-xs">
           {assignments.length > 0 ?
             "All eligible students are already assigned to this exam."
-          : "There are no active student accounts yet. Create or import candidates from User Management."}
+          : "There are no active student accounts yet. Create or import candidates from User Management."
+          }
         </p>
       )}
 
@@ -285,8 +300,9 @@ const AssignStudents = ({
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel size="lg">Cancel</AlertDialogCancel>
             <AlertDialogAction
+              size="lg"
               variant="destructive"
               onClick={() => {
                 if (pendingRemoval) void handleUnassign(pendingRemoval);

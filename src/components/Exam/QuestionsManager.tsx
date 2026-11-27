@@ -1,5 +1,6 @@
 "use client";
 
+import { ConfirmAction } from "@/components/Workspace/ConfirmAction";
 import {
   Loader2Icon,
   PencilIcon,
@@ -34,6 +35,7 @@ import {
   DialogTrigger,
 } from "../shadcnui/dialog";
 import { Checkbox } from "../shadcnui/checkbox";
+import { Skeleton } from "../shadcnui/skeleton";
 
 type Question = {
   id: string;
@@ -248,14 +250,16 @@ const EditQuestionForm = ({
           disabled={isSubmitting || !isValid}
           size="lg">
           {isSubmitting ?
-            <Loader2Icon className="size-4 animate-spin" />
+            <Loader2Icon className="size-4 motion-safe:animate-spin" />
           : "Update"}
+          {isSubmitting ? "Updating…" : null}
         </Button>
         <Button
           type="button"
           variant="outline"
           size="lg"
-          onClick={onDone}>
+          onClick={onDone}
+          disabled={isSubmitting}>
           <XIcon className="size-4" /> Cancel
         </Button>
       </div>
@@ -444,8 +448,22 @@ const ImportBankDialog = ({ examId }: { examId: string }) => {
 
         <div className="grid max-h-64 gap-1 overflow-y-auto">
           {fetching ?
-            <div className="flex justify-center py-8">
-              <Loader2Icon className="text-muted-foreground size-6 animate-spin" />
+            <div
+              role="status"
+              aria-label="Loading questions"
+              aria-busy="true"
+              className="grid gap-2 py-2">
+              {Array.from({ length: 4 }, (_, index) => (
+                <div
+                  key={index}
+                  className="flex items-center gap-3 rounded-md px-3 py-2.5">
+                  <Skeleton className="size-4 shrink-0 rounded-sm" />
+                  <div className="grid flex-1 gap-2">
+                    <Skeleton className="h-3 w-4/5" />
+                    <Skeleton className="h-3 w-2/5" />
+                  </div>
+                </div>
+              ))}
             </div>
           : filtered.length === 0 ?
             <p className="text-muted-foreground py-8 text-center text-sm">
@@ -499,7 +517,12 @@ const ImportBankDialog = ({ examId }: { examId: string }) => {
             size="lg"
             onClick={handleRandomImport}
             disabled={loading}>
-            Random import
+            {loading ?
+              <>
+                <Loader2Icon className="size-4 motion-safe:animate-spin" />
+                Importing random questions…
+              </>
+            : "Random import"}
           </Button>
         </div>
 
@@ -540,7 +563,7 @@ const QuestionsManager = ({ examId, questions }: QuestionsManagerProps) => {
 
   return (
     <div className="grid gap-4">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <h3 className="text-lg font-medium">Questions ({questions.length})</h3>
         <ImportBankDialog examId={examId} />
       </div>
@@ -558,7 +581,7 @@ const QuestionsManager = ({ examId, questions }: QuestionsManagerProps) => {
             <div
               key={q.id}
               className="border-border bg-card flex items-start justify-between gap-4 rounded-3xl border p-4">
-              <div className="grid gap-1">
+              <div className="grid min-w-0 gap-1 wrap-anywhere">
                 <div className="flex items-center gap-2">
                   <span className="bg-muted flex size-6 items-center justify-center rounded-full text-xs font-medium">
                     {idx + 1}
@@ -585,22 +608,28 @@ const QuestionsManager = ({ examId, questions }: QuestionsManagerProps) => {
               <div className="flex shrink-0 gap-1">
                 <Button
                   variant="outline"
-                  size="icon-xs"
+                  size="icon"
+                  aria-label="Edit question"
                   onClick={() => setEditingId(q.id)}>
                   <PencilIcon className="size-3" />
                 </Button>
-                <Button
-                  variant="outline"
-                  size="icon-xs"
-                  onClick={() => {
-                    if (!confirm("Delete this question?")) return;
-                    handleDelete(q.id);
-                  }}
-                  disabled={loadingDelete === q.id}>
-                  {loadingDelete === q.id ?
-                    <Loader2Icon className="size-3 animate-spin" />
-                  : <Trash2Icon className="text-destructive size-3" />}
-                </Button>
+                <ConfirmAction
+                  title="Delete this question?"
+                  description="This removes the question from this exam."
+                  actionLabel="Delete question"
+                  onConfirm={() => void handleDelete(q.id)}
+                  trigger={
+                    <Button
+                      aria-label="Delete question"
+                      variant="outline"
+                      size="icon"
+                      disabled={loadingDelete === q.id}>
+                      {loadingDelete === q.id ?
+                        <Loader2Icon aria-hidden="true" className="motion-safe:animate-spin" />
+                      : <Trash2Icon aria-hidden="true" className="text-destructive" />}
+                    </Button>
+                  }
+                />
               </div>
             </div>
           ))}

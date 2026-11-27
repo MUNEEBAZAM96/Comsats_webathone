@@ -41,6 +41,8 @@ const ForgotPasswordForm = () => {
 
   return (
     <form
+      method="post"
+      aria-busy={isSubmitting}
       onSubmit={handleSubmit(forgotPasswordHandler)}
       className="grid gap-6"
       noValidate>

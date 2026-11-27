@@ -605,7 +605,10 @@ const main = async () => {
     check("second tab shows the already-open warning", warned);
     await tab2.close();
 
-    const deviceB = await cloneContext(browser, S.context);
+    // Web Locks can be shared across contexts of one browser, so the second
+    // device runs in its own browser process.
+    const browserB = await chromium.launch({ channel: process.env.E2E_CHANNEL });
+    const deviceB = await cloneContext(browserB, S.context);
     const bPage = await deviceB.newPage();
     await bPage.goto(`/student/exams/${ids.sync}`);
     await bPage.getByText("Question 1 of 4").waitFor();
@@ -613,7 +616,11 @@ const main = async () => {
 
     await goTo(sPage, 4, 4);
     await textBox(sPage).fill("from-device-A");
-    await waitSaved(sPage);
+    await until(
+      async () =>
+        answerByOrder(await attemptFor(ids.sync, student.id), 3)?.text === "from-device-A",
+      15_000,
+    );
     const seqA = answerByOrder(await attemptFor(ids.sync, student.id), 3)!.clientSeq;
 
     await textBox(bPage).fill("from-device-B");
@@ -629,7 +636,7 @@ const main = async () => {
       `"${stored.text}" seq ${stored.clientSeq}`,
     );
     check("stale device shows the conflict toast", toast);
-    await deviceB.close();
+    await browserB.close();
   });
 
   // ----- Phase 07: timer never increases after a resync -----------------------

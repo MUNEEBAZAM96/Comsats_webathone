@@ -2,7 +2,7 @@ import {
   DashboardShellSkeleton,
   DashboardSkeleton,
 } from "@/components/Dashboard/DashboardShellSkeleton";
-import { QuietReveal } from "@/components/Providers/QuietReveal";
+import { StatusBreakdown } from "@/components/Dashboard/StatusBreakdown";
 import { DashboardIntro } from "@/components/Dashboard/DashboardIntro";
 import { StatusBadge } from "@/components/Results/StatusBadge";
 import { StatCard } from "@/components/Dashboard/StatCard";
@@ -17,7 +17,6 @@ import {
   BookOpenIcon,
   FileTextIcon,
   GraduationCapIcon,
-  ArrowUpRightIcon,
   ChartNoAxesColumnIcon,
   PlusIcon,
   UsersIcon,
@@ -47,24 +46,22 @@ const AdminDashboardContent = async () => {
 
   return (
     <>
-      <QuietReveal>
-        <DashboardIntro
-          title="Admin overview"
-          action={
-            <DashboardLink href="/admin/exams/new">
-              <PlusIcon aria-hidden="true" /> Create Exam
-            </DashboardLink>
-          }>
-          Manage exams and review platform activity.
-        </DashboardIntro>
-      </QuietReveal>
+      <DashboardIntro
+        title="Admin overview"
+        action={
+          <DashboardLink href="/admin/exams/new">
+            <PlusIcon aria-hidden="true" /> Create Exam
+          </DashboardLink>
+        }>
+        Manage exams and review platform activity.
+      </DashboardIntro>
 
       <Suspense fallback={<DashboardSkeleton />}>
         <AdminDashboardStats />
       </Suspense>
 
       <section
-        className="grid gap-4"
+        className="dashboard-section grid gap-4"
         aria-labelledby="admin-quick-actions">
         <h2
           id="admin-quick-actions"
@@ -94,10 +91,6 @@ const AdminDashboardContent = async () => {
                 className="size-5 shrink-0 text-primary"
               />
               <span className="min-w-0 flex-1">{title}</span>
-              <ArrowUpRightIcon
-                aria-hidden="true"
-                className="size-4 shrink-0 text-muted-foreground"
-              />
             </Link>
           ))}
         </div>
@@ -164,30 +157,30 @@ const AdminDashboardStats = async () => {
 
   return (
     <>
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="dashboard-stats grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
         <StatCard
-          icon={<UsersIcon className="text-primary size-6" />}
+          icon={<UsersIcon />}
           label="Total users"
           value={totalUsers}
         />
         <StatCard
-          icon={<FileTextIcon className="text-primary size-6" />}
+          icon={<FileTextIcon />}
           label="Total examinations"
           value={totalExams}
         />
         <StatCard
-          icon={<BookOpenIcon className="text-primary size-6" />}
+          icon={<BookOpenIcon />}
           label="Question bank items"
           value={questionCount}
         />
         <StatCard
-          icon={<GraduationCapIcon className="text-primary size-6" />}
+          icon={<GraduationCapIcon />}
           label="Total attempts"
           value={totalAttempts}
         />
       </div>
 
-      <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+      <div className="dashboard-section grid gap-4 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
         <div className="grid min-w-0 gap-4">
           <Card>
             <CardHeader>
@@ -196,12 +189,11 @@ const AdminDashboardStats = async () => {
               </h2>
             </CardHeader>
             <CardContent>
-              {recentExams.length === 0 ? (
+              {recentExams.length === 0 ?
                 <p className="text-muted-foreground py-4 text-center text-sm">
                   No exams created yet.
                 </p>
-              ) : (
-                <div className="grid gap-2">
+              : <div className="grid gap-2">
                   {recentExams.map((exam) => (
                     <div
                       key={exam.id}
@@ -220,16 +212,16 @@ const AdminDashboardStats = async () => {
                       <Badge
                         variant="secondary"
                         className={
-                          exam.status === "published"
-                            ? "bg-info-surface text-info"
-                            : undefined
+                          exam.status === "published" ?
+                            "bg-info-surface text-info"
+                          : undefined
                         }>
                         {exam.status}
                       </Badge>
                     </div>
                   ))}
                 </div>
-              )}
+              }
             </CardContent>
           </Card>
 
@@ -240,28 +232,26 @@ const AdminDashboardStats = async () => {
               </h2>
             </CardHeader>
             <CardContent>
-              {recentAttempts.length === 0 ? (
+              {recentAttempts.length === 0 ?
                 <p className="text-muted-foreground py-4 text-center text-sm">
                   No attempts yet.
                 </p>
-              ) : (
-                <div className="grid gap-2">
+              : <div className="grid gap-2">
                   {recentAttempts.map((attempt) => (
                     <div
                       key={attempt.id}
                       className="border-border flex items-center justify-between gap-2 border-b pb-2 last:border-0 last:pb-0">
                       <div className="min-w-0">
-                        {attempt.status === "in_progress" ? (
+                        {attempt.status === "in_progress" ?
                           <p className="break-words text-sm font-medium">
                             {attempt.user.name}
                           </p>
-                        ) : (
-                          <Link
+                        : <Link
                             className="break-words text-sm font-medium underline-offset-4 hover:underline"
                             href={`/admin/results/${attempt.id}`}>
                             {attempt.user.name}
                           </Link>
-                        )}
+                        }
                         <p className="break-words text-xs text-muted-foreground">
                           {attempt.exam.title}
                           {attempt.submittedAt &&
@@ -281,11 +271,11 @@ const AdminDashboardStats = async () => {
                     </div>
                   ))}
                 </div>
-              )}
+              }
             </CardContent>
           </Card>
         </div>
-        <div className="grid min-w-0 gap-4 sm:grid-cols-2 xl:grid-cols-1">
+        <div className="grid min-w-0 content-start gap-4 sm:grid-cols-2 lg:grid-cols-1">
           <Card>
             <CardHeader>
               <h2 className="font-heading text-base font-semibold">
@@ -293,18 +283,22 @@ const AdminDashboardStats = async () => {
               </h2>
             </CardHeader>
             <CardContent>
-              <div className="grid gap-2">
-                {userCounts.map((g) => (
-                  <div
-                    key={g.role}
-                    className="flex items-center justify-between">
-                    <span className="text-muted-foreground text-sm capitalize">
-                      {g.role}
-                    </span>
-                    <span className="font-medium">{g._count}</span>
-                  </div>
-                ))}
-              </div>
+              {userCounts.length ?
+                <StatusBreakdown
+                  items={userCounts.map(({ role, _count }) => ({
+                    label:
+                      role ?
+                        role === "student" ?
+                          "Candidate"
+                        : role.charAt(0).toUpperCase() + role.slice(1)
+                      : "Unassigned",
+                    count: _count,
+                  }))}
+                />
+              : <p className="text-sm text-muted-foreground">
+                  No users to show.
+                </p>
+              }
             </CardContent>
           </Card>
 
