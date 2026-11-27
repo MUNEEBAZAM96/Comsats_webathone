@@ -1,3 +1,4 @@
+import { isAfter, parseISO } from "date-fns";
 import z from "zod";
 
 export const loginFormSchema = z.object({
@@ -112,8 +113,8 @@ export const examFormSchema = z
     duration: z.coerce
       .number({ error: "Duration must be a number" })
       .int({ error: "Duration must be a whole number" })
-      .min(1, { error: "Duration must be at least 1 minute" })
-      .max(1440, { error: "Duration must not exceed 1440 minutes" }),
+      .min(1, { error: "Duration must be at least one minute." })
+      .max(1440, { error: "Duration must not exceed 1440 minutes." }),
     startTime: z.string().optional().or(z.literal("")),
     endTime: z.string().optional().or(z.literal("")),
     shuffleQuestions: formBoolean.optional().default(false),
@@ -127,18 +128,24 @@ export const examFormSchema = z
       z.coerce
         .number({ error: "Pass mark must be a number" })
         .int({ error: "Pass mark must be a whole number" })
-        .min(0, { error: "Pass mark must be at least 0" })
-        .max(100, { error: "Pass mark must not exceed 100" })
+        .min(0, { error: "Pass mark must be between 0 and 100." })
+        .max(100, { error: "Pass mark must be between 0 and 100." })
         .optional(),
     ),
   })
-  .refine(
-    (data) => {
-      if (!data.startTime || !data.endTime) return true;
-      return new Date(data.endTime) > new Date(data.startTime);
-    },
-    { error: "End time must be after start time", path: ["endTime"] },
-  );
+  .superRefine((data, ctx) => {
+    if (!data.startTime || !data.endTime) return;
+    const start = parseISO(data.startTime);
+    const end = parseISO(data.endTime);
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return;
+    if (!isAfter(end, start)) {
+      ctx.addIssue({
+        code: "custom",
+        message: "End time must be after start time.",
+        path: ["endTime"],
+      });
+    }
+  });
 
 export type ExamFormType = z.infer<typeof examFormSchema>;
 

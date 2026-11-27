@@ -1,17 +1,14 @@
-import type { Metadata, Route } from "next";
-import Link from "next/link";
-import { format } from "date-fns";
-import { ArrowLeftIcon, BarChart3Icon, EyeIcon, UsersIcon } from "lucide-react";
-import ExamForm from "@/components/Exam/ExamForm";
-import QuestionsManager from "@/components/Exam/QuestionsManager";
-import { Button } from "@/components/shadcnui/button";
-import { getExamById, updateExam } from "@/server/examActions";
+import type { Metadata } from "next";
+import ExamBuilder from "@/components/Exam/Builder/ExamBuilder";
+import { getExamById } from "@/server/examActions";
 import { requireRole } from "@/server/session";
 
 export const metadata: Metadata = {
-  title: "Exam Details",
-  description: "View exam details",
+  title: "Exam Builder",
+  description: "Author and publish an exam",
 };
+
+export const instant = false;
 
 const AdminExamDetailPage = async ({
   params,
@@ -22,97 +19,27 @@ const AdminExamDetailPage = async ({
   const { id } = await params;
   const exam = await getExamById(id);
 
-  const formatDate = (d: Date | null | undefined) => {
-    if (!d) return "";
-    return format(d, "yyyy-MM-dd'T'HH:mm");
-  };
-
   return (
-    <section className="grid gap-8">
-      <div className="flex items-center gap-4">
-        <Link href="/admin/exams">
-          <Button
-            variant="outline"
-            size="icon-lg">
-            <ArrowLeftIcon className="size-4" />
-          </Button>
-        </Link>
-        <h1 className="text-2xl font-medium">{exam.title}</h1>
-      </div>
-
-      <div className="text-muted-foreground grid gap-2 text-sm">
-        <p>
-          Status:{" "}
-          <span className="text-foreground font-medium">{exam.status}</span>
-        </p>
-        <p>
-          Created by:{" "}
-          <span className="text-foreground font-medium">
-            {exam.createdBy.name}
-          </span>
-        </p>
-        <p>
-          Duration:{" "}
-          <span className="text-foreground font-medium">
-            {exam.duration} minutes
-          </span>
-        </p>
-        {exam.description && <p>{exam.description}</p>}
-      </div>
-
-      {exam.status === "draft" && (
-        <div className="grid gap-4">
-          <h2 className="text-lg font-medium">Edit Exam</h2>
-          <ExamForm
-            action={updateExam.bind(null, id)}
-            defaultValues={{
-              title: exam.title,
-              description: exam.description ?? "",
-              instructions: exam.instructions ?? "",
-              duration: exam.duration,
-              startTime: formatDate(exam.startTime),
-              endTime: formatDate(exam.endTime),
-              shuffleQuestions: exam.shuffleQuestions,
-              shuffleOptions: exam.shuffleOptions,
-              resultReveal: exam.resultReveal as "none" | "score_only" | "score_and_answers",
-              passMarkPercent: exam.passMarkPercent ?? undefined,
-            }}
-            submitLabel="Update Exam"
-          />
-        </div>
-      )}
-
-      <div className="border-border flex flex-wrap gap-2 border-t pt-8">
-        <Link href={`/admin/exams/${id}/assign`}>
-          <Button
-            variant="outline"
-            size="lg">
-            <UsersIcon className="size-4" /> Assign Students
-          </Button>
-        </Link>
-        <Link href={`/admin/exams/${id}/assign-proctor` as Route}>
-          <Button
-            variant="outline"
-            size="lg">
-            <EyeIcon className="size-4" /> Assign Proctors
-          </Button>
-        </Link>
-        <Link href={`/admin/exams/${id}/results`}>
-          <Button
-            variant="outline"
-            size="lg">
-            <BarChart3Icon className="size-4" /> Results
-          </Button>
-        </Link>
-      </div>
-
-      <div className="border-border border-t pt-8">
-        <QuestionsManager
-          examId={id}
-          questions={exam.questions}
-        />
-      </div>
-    </section>
+    <ExamBuilder
+      basePath="/admin"
+      exam={{
+        id: exam.id,
+        title: exam.title,
+        description: exam.description,
+        instructions: exam.instructions,
+        duration: exam.duration,
+        startTime: exam.startTime,
+        endTime: exam.endTime,
+        status: exam.status,
+        totalMarks: exam.totalMarks ?? 0,
+        shuffleQuestions: exam.shuffleQuestions,
+        shuffleOptions: exam.shuffleOptions,
+        resultReveal: exam.resultReveal,
+        passMarkPercent: exam.passMarkPercent,
+        createdBy: exam.createdBy,
+        questions: exam.questions,
+      }}
+    />
   );
 };
 

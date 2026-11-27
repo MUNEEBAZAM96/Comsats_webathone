@@ -12,7 +12,7 @@ import {
   withExamApiFields,
 } from "@/lib/exam/lifecycle";
 import { buildQuestionGradingFields } from "@/lib/exam/markingScheme";
-import { ZodError } from "zod";
+import { z, ZodError } from "zod";
 import { examFormSchema, questionFormSchema } from "@/lib/zodSchema";
 
 const zodMessage = (e: ZodError) =>
@@ -287,15 +287,37 @@ export const publishExam = async (id: string) => {
         questionCount: locked._count.questions,
       });
 
-      const agg = await tx.question.aggregate({
+      const questions = await tx.question.findMany({
         where: { examId: id },
-        _sum: { points: true },
+        select: {
+          id: true,
+          text: true,
+          type: true,
+          options: true,
+          answer: true,
+          points: true,
+        },
       });
-      const totalMarks = agg._sum.points ?? 0;
+      const { evaluatePublishReadiness } = await import(
+        "@/lib/exam/publishReadiness"
+      );
+      const readiness = evaluatePublishReadiness({
+        title: locked.title,
+        duration: locked.duration,
+        startTime: locked.startTime,
+        endTime: locked.endTime,
+        passMarkPercent: locked.passMarkPercent,
+        questions,
+      });
+      if (!readiness.ready) {
+        throw new Error(
+          readiness.issues[0]?.message ?? "Exam is not ready to publish",
+        );
+      }
 
       await tx.exam.update({
         where: { id },
-        data: { status: "published", totalMarks },
+        data: { status: "published", totalMarks: readiness.totalMarks },
       });
     });
 
@@ -476,4 +498,93 @@ export const deleteQuestion = async (id: string) => {
     if (e instanceof Error) throw e;
     throw new Error("Failed to delete question");
   }
+};
+
+const reorderSchema = z.object({
+  examId: z.string().min(1),
+  orderedIds: z.array(z.string().min(1)).min(1),
+});
+
+/** Persist a full question order for a draft exam with no attempts. */
+export const reorderExamQuestions = async (
+  examId: string,
+  orderedIds: string[],
+) => {
+  const session = await requireExamStaff();
+  const parsed = reorderSchema.safeParse({ examId, orderedIds });
+  if (!parsed.success) throw new Error(zodMessage(parsed.error));
+
+  const uniqueIds = [...new Set(parsed.data.orderedIds)];
+  if (uniqueIds.length !== parsed.data.orderedIds.length)
+    throw new Error("Duplicate question ids in reorder list");
+
+  try {
+    const exam = await prisma.exam.findUnique({
+      where: { id: parsed.data.examId },
+      include: { questions: { select: { id: true } } },
+    });
+    if (!exam) throw new Error("Exam not found");
+
+    assertExamOwnerOrAdmin(session, exam.createdById, "reorder");
+    await assertDraftExamMutable(exam);
+
+    const existingIds = exam.questions.map((q) => q.id).sort();
+    const incoming = [...uniqueIds].sort();
+    if (
+      existingIds.length !== incoming.length ||
+      existingIds.some((id, i) => id !== incoming[i])
+    ) {
+      throw new Error("Reorder list must include every question exactly once");
+    }
+
+    await prisma.$transaction(
+      uniqueIds.map((id, order) =>
+        prisma.question.update({ where: { id }, data: { order } }),
+      ),
+    );
+
+    await refreshExamTotalMarks(parsed.data.examId);
+
+    const basePath = basePathFor(session.user.role);
+    revalidatePath(`${basePath}/exams/${parsed.data.examId}`);
+    return { ok: true as const };
+  } catch (e) {
+    if (e instanceof Error) throw e;
+    throw new Error("Failed to reorder questions");
+  }
+};
+
+export const getExamPublishReadiness = async (examId: string) => {
+  const session = await requireExamStaff();
+
+  const exam = await prisma.exam.findUnique({
+    where: { id: examId },
+    include: {
+      questions: {
+        orderBy: { order: "asc" },
+        select: {
+          id: true,
+          text: true,
+          type: true,
+          options: true,
+          answer: true,
+          points: true,
+        },
+      },
+    },
+  });
+  if (!exam) throw new Error("Exam not found");
+  assertExamOwnerOrAdmin(session, exam.createdById, "review");
+
+  const { evaluatePublishReadiness } = await import(
+    "@/lib/exam/publishReadiness"
+  );
+  return evaluatePublishReadiness({
+    title: exam.title,
+    duration: exam.duration,
+    startTime: exam.startTime,
+    endTime: exam.endTime,
+    passMarkPercent: exam.passMarkPercent,
+    questions: exam.questions,
+  });
 };

@@ -9,6 +9,7 @@ import { refreshExamTotalMarks } from "@/lib/exam/lifecycle";
 import { buildQuestionGradingFields } from "@/lib/exam/markingScheme";
 import { bankQuestionFormSchema, randomImportSchema } from "@/lib/zodSchema";
 import { Prisma } from "@generated/prisma/client";
+import { z } from "zod";
 
 const requireExaminer = async () => {
   const session = await auth.api.getSession({ headers: await headers() });
@@ -319,6 +320,105 @@ export const getBankQuestions = async () => {
     });
   } catch {
     throw new Error("Failed to fetch bank questions");
+  }
+};
+
+const bankListSchema = z.object({
+  search: z.string().optional().or(z.literal("")),
+  subjectId: z.string().optional().or(z.literal("")),
+  topicId: z.string().optional().or(z.literal("")),
+  difficulty: z.enum(["easy", "medium", "hard"]).optional().or(z.literal("")),
+  type: z
+    .enum([
+      "multiple_choice",
+      "single_choice",
+      "true_false",
+      "short_answer",
+      "long_answer",
+    ])
+    .optional()
+    .or(z.literal("")),
+  minPoints: z.coerce.number().int().min(0).optional(),
+  maxPoints: z.coerce.number().int().min(0).optional(),
+  excludeIds: z.array(z.string()).optional(),
+  page: z.coerce.number().int().min(1).optional().default(1),
+  pageSize: z.coerce.number().int().min(1).max(50).optional().default(25),
+});
+
+/** Filtered, paginated bank list for the exam builder picker. */
+export const listBankQuestions = async (
+  input: z.input<typeof bankListSchema> = {},
+) => {
+  await requireExaminer();
+  const parsed = bankListSchema.safeParse(input);
+  if (!parsed.success) throw new Error(parsed.error.issues[0]?.message ?? "Invalid filters");
+
+  const {
+    search,
+    subjectId,
+    topicId,
+    difficulty,
+    type,
+    minPoints,
+    maxPoints,
+    excludeIds,
+    page,
+    pageSize,
+  } = parsed.data;
+
+  const where: Prisma.BankQuestionWhereInput = {
+    ...(search?.trim() ?
+      { text: { contains: search.trim(), mode: "insensitive" } }
+    : {}),
+    ...(topicId ? { topicId } : {}),
+    ...(subjectId && !topicId ? { topic: { subjectId } } : {}),
+    ...(difficulty ? { difficulty } : {}),
+    ...(type ? { type } : {}),
+    ...(minPoints != null || maxPoints != null ?
+      {
+        points: {
+          ...(minPoints != null ? { gte: minPoints } : {}),
+          ...(maxPoints != null ? { lte: maxPoints } : {}),
+        },
+      }
+    : {}),
+    ...(excludeIds?.length ? { id: { notIn: excludeIds } } : {}),
+  };
+
+  try {
+    const [total, items] = await Promise.all([
+      prisma.bankQuestion.count({ where }),
+      prisma.bankQuestion.findMany({
+        where,
+        orderBy: { createdAt: "desc" },
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+        select: {
+          id: true,
+          text: true,
+          type: true,
+          options: true,
+          points: true,
+          difficulty: true,
+          topic: {
+            select: {
+              id: true,
+              name: true,
+              subject: { select: { id: true, name: true } },
+            },
+          },
+        },
+      }),
+    ]);
+    return {
+      items,
+      total,
+      page,
+      pageSize,
+      totalPages: Math.max(1, Math.ceil(total / pageSize)),
+    };
+  } catch {
+    throw new Error("Failed to list bank questions");
   }
 };
 

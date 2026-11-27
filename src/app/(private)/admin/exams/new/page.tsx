@@ -21,10 +21,16 @@ const AdminCreateExamContent = async () => {
 
   return (
     <section className="grid gap-6">
-      <h1 className="text-2xl font-medium">Create Exam</h1>
+      <div className="grid gap-1">
+        <h1 className="text-2xl font-medium">Create exam</h1>
+        <p className="text-muted-foreground text-sm">
+          Save the basics first. You will continue in the exam builder to add
+          questions, configure settings, and publish.
+        </p>
+      </div>
       <ExamForm
         action={createExam}
-        submitLabel="Create Exam"
+        submitLabel="Create draft and continue"
       />
     </section>
   );
