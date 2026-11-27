@@ -1,5 +1,5 @@
-import { hash as argon2Hash } from "@node-rs/argon2";
 import "dotenv/config";
+import { hashPasswordFunction } from "../src/lib/argon2";
 import prisma from "../src/lib/database/dbClient";
 import { serverEnv } from "../src/lib/env/serverEnv";
 
@@ -9,9 +9,7 @@ async function upsertUser(
   role: string,
   password: string,
 ) {
-  const hashedPassword = await argon2Hash(password, {
-    secret: Buffer.from(serverEnv.BETTER_AUTH_SECRET),
-  });
+  const hashedPassword = await hashPasswordFunction(password);
 
   const user = await prisma.user.upsert({
     where: { email },
@@ -19,21 +17,24 @@ async function upsertUser(
     create: { email, name, role, emailVerified: true },
   });
 
+  // Better Auth sign-in only accepts a credential account whose accountId is
+  // the user's id (that is what its own sign-up writes). Looking the account up
+  // by userId also repairs rows an earlier seed created with accountId = email.
   const existingAccount = await prisma.account.findFirst({
-    where: { providerId: "credential", accountId: email },
+    where: { providerId: "credential", userId: user.id },
   });
 
   if (existingAccount) {
     await prisma.account.update({
       where: { id: existingAccount.id },
-      data: { password: hashedPassword },
+      data: { accountId: user.id, password: hashedPassword },
     });
   } else {
     await prisma.account.create({
       data: {
         userId: user.id,
         providerId: "credential",
-        accountId: email,
+        accountId: user.id,
         password: hashedPassword,
       },
     });

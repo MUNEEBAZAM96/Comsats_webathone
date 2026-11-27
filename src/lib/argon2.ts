@@ -13,6 +13,15 @@ type VerifyPasswordType = {
 };
 
 /**
+ * Argon2id, stated explicitly instead of relying on the library default.
+ * `Algorithm` in `@node-rs/argon2` is an ambient const enum, which cannot be
+ * referenced with `isolatedModules`, so the member value is spelled out here.
+ * Memory, time and parallelism stay at the library defaults (m=19456, t=2, p=1),
+ * so existing hashes keep verifying.
+ */
+const ARGON2ID = 2;
+
+/**
  * Hashes a password using Argon2 with the application's secret key.
  *
  * This function uses the Argon2 algorithm with a secret key derived from the
@@ -29,6 +38,7 @@ type VerifyPasswordType = {
  */
 export const hashPasswordFunction = async (password: string) => {
   const hashedPassword = await argon2Hash(password, {
+    algorithm: ARGON2ID,
     secret: Buffer.from(serverEnv.BETTER_AUTH_SECRET),
   });
 

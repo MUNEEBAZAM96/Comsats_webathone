@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import { format, isAfter } from "date-fns";
-import { auth } from "@/lib/auth";
-import { headers } from "next/headers";
+import { requireRole } from "@/server/session";
 import prisma from "@/lib/database/dbClient";
 import {
   Card,
@@ -29,8 +28,8 @@ export const metadata: Metadata = {
 };
 
 const StudentDashboard = async () => {
-  const session = await auth.api.getSession({ headers: await headers() });
-  const userId = session!.user.id;
+  const session = await requireRole("student");
+  const userId = session.user.id;
 
   const [assignments, attempts, recentAttempts] = await Promise.all([
     prisma.examAssignment.findMany({
