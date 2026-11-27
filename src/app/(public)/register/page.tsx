@@ -1,3 +1,4 @@
+import AuthTestBanner from "@/components/Auth/AuthTestBanner";
 import RegisterForm from "@/components/Auth/RegisterForm";
 import {
   Card,
@@ -24,7 +25,8 @@ const RegisterPage = () => {
           <CardDescription>Create an account to get started</CardDescription>
         </CardHeader>
 
-        <CardContent>
+        <CardContent className="grid gap-4">
+          <AuthTestBanner />
           <RegisterForm />
         </CardContent>
 

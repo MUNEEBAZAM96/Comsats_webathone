@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import ExamForm from "@/components/Exam/ExamForm";
 import { createExam } from "@/server/examActions";
 import { requireRole } from "@/server/session";
@@ -8,7 +9,13 @@ export const metadata: Metadata = {
   description: "Create a new exam",
 };
 
-const ExaminerCreateExamPage = async () => {
+const ExaminerCreateExamPage = () => (
+  <Suspense fallback={null}>
+    <ExaminerCreateExamContent />
+  </Suspense>
+);
+
+const ExaminerCreateExamContent = async () => {
   await requireRole("examiner");
 
   return (

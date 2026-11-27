@@ -1,13 +1,20 @@
 import { ProfileSettings } from "@/components/Profile/ProfileSettings";
 import { requireSession } from "@/server/session";
 import type { Metadata } from "next";
+import { Suspense } from "react";
 
 export const metadata: Metadata = {
   title: "Settings",
   description: "Manage your account settings",
 };
 
-const SettingsPage = async () => {
+const SettingsPage = () => (
+  <Suspense fallback={null}>
+    <SettingsPageContent />
+  </Suspense>
+);
+
+const SettingsPageContent = async () => {
   await requireSession();
 
   return (

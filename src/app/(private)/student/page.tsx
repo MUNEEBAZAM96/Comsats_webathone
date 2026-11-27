@@ -21,13 +21,21 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import type { Route } from "next";
+import { Suspense } from "react";
+import { DashboardShellSkeleton } from "@/components/Dashboard/DashboardShellSkeleton";
 
 export const metadata: Metadata = {
   title: "Dashboard",
   description: "Student dashboard",
 };
 
-const StudentDashboard = async () => {
+const StudentDashboard = () => (
+  <Suspense fallback={<DashboardShellSkeleton />}>
+    <StudentDashboardContent />
+  </Suspense>
+);
+
+const StudentDashboardContent = async () => {
   const session = await requireRole("student");
   const userId = session.user.id;
 
