@@ -8,6 +8,7 @@ import {
   BookOpenIcon,
   FileTextIcon,
   LayoutDashboardIcon,
+  SettingsIcon,
   UsersIcon,
   type LucideIcon,
 } from "lucide-react";
@@ -15,6 +16,7 @@ import {
 import {
   Sidebar,
   SidebarContent,
+  SidebarFooter,
   SidebarGroup,
   SidebarGroupContent,
   SidebarGroupLabel,
@@ -52,7 +54,7 @@ const AppSidebar = ({
 
   return (
     <Sidebar collapsible="icon">
-      <SidebarHeader className="h-16 gap-0.5 justify-center border-b px-4 group-data-[collapsible=icon]:items-center group-data-[collapsible=icon]:px-0">
+      <SidebarHeader className="min-h-16 gap-0.5 justify-center border-b px-4 group-data-[collapsible=icon]:items-center group-data-[collapsible=icon]:px-0">
         <Link
           href={groups[0]?.items[0]?.url ?? "/"}
           aria-label="ExamGuard overview"
@@ -88,7 +90,7 @@ const AppSidebar = ({
                           }
                           isActive={isActive(item)}
                           tooltip={item.title}
-                          className="min-h-11 rounded-md data-active:font-semibold [&_svg]:size-[18px]">
+                          className="workspace-nav-item min-h-11 rounded-md data-active:font-semibold [&_svg]:size-[18px]">
                           {Icon && <Icon aria-hidden="true" />}
                           <span>{item.title}</span>
                         </SidebarMenuButton>
@@ -101,6 +103,26 @@ const AppSidebar = ({
           ))}
         </nav>
       </SidebarContent>
+      <SidebarFooter className="border-t px-4 py-3 group-data-[collapsible=icon]:px-2">
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton
+              render={
+                <Link
+                  href="/settings"
+                  onNavigate={closeMobileNavigation}
+                  aria-current={pathname === "/settings" ? "page" : undefined}
+                />
+              }
+              isActive={pathname === "/settings"}
+              tooltip="Settings"
+              className="workspace-nav-item min-h-11 rounded-md">
+              <SettingsIcon aria-hidden="true" />
+              <span>Settings</span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
+      </SidebarFooter>
       <SidebarRail />
     </Sidebar>
   );

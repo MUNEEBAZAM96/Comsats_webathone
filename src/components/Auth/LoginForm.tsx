@@ -3,7 +3,7 @@
 import { authClient } from "@/lib/auth-client";
 import { loginFormSchema, LoginFormType } from "@/lib/zodSchema";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { ArrowRightIcon, EyeIcon, EyeOffIcon, Loader2Icon } from "lucide-react";
+import { EyeIcon, EyeOffIcon, Loader2Icon, LogInIcon } from "lucide-react";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Controller, useForm } from "react-hook-form";
@@ -71,13 +71,11 @@ const LoginForm = () => {
 
   return (
     <form
+      method="post"
+      aria-busy={isSubmitting}
       onSubmit={handleSubmit(loginFormHandler)}
-      className="grid gap-6"
+      className="auth-form grid"
       noValidate>
-      <AuthTestBanner
-        showSeedHelper
-        onFillAccount={fillSeedAccount}
-      />
 
       {/* Email field */}
       <Controller
@@ -180,7 +178,7 @@ const LoginForm = () => {
         </p>
       )}
       <Button
-        className="w-full justify-between"
+        className="auth-submit w-full"
         size="lg"
         type="submit"
         disabled={isSubmitting}
@@ -189,9 +187,10 @@ const LoginForm = () => {
         {isSubmitting ? (
           <Loader2Icon className="animate-spin" aria-hidden="true" />
         ) : (
-          <ArrowRightIcon aria-hidden="true" />
+          <LogInIcon aria-hidden="true" />
         )}
       </Button>
+      <AuthTestBanner onFillAccount={fillSeedAccount} />
     </form>
   );
 };

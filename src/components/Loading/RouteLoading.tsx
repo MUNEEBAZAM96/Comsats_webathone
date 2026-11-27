@@ -1,5 +1,3 @@
-import { LoaderCircleIcon } from "lucide-react";
-
 type RouteLoadingProps = {
   variant?: "auth" | "page" | "workspace";
   message?: string;
@@ -8,12 +6,8 @@ type RouteLoadingProps = {
 const LoadingStatus = ({ message }: { message: string }) => (
   <div
     role="status"
-    className="text-muted-foreground flex items-center gap-2 text-sm">
-    <LoaderCircleIcon
-      aria-hidden="true"
-      className="size-4 motion-safe:animate-spin"
-    />
-    <span>{message}</span>
+    className="text-muted-foreground text-sm">
+    {message}
   </div>
 );
 

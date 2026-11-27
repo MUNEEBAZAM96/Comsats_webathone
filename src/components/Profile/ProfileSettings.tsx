@@ -78,147 +78,153 @@ const ProfileSettings = () => {
   if (!session?.user) return null;
 
   return (
-    <div className="grid gap-8">
-      <AccountInfo
-        email={session.user.email}
-        role={session.user.role}
-        createdAt={session.user.createdAt}
-      />
+    <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)]">
+      <div className="grid min-w-0 gap-4 sm:grid-cols-2 xl:grid-cols-1">
+        <AccountInfo
+          email={session.user.email}
+          role={session.user.role}
+          createdAt={session.user.createdAt}
+        />
+        <AvatarUpload />
+      </div>
+      <div className="grid min-w-0 gap-4">
+        <Card size="sm">
+          <CardHeader>
+            <CardTitle>Display Name</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <form
+              onSubmit={handleNameSubmitForm(handleNameSubmit)}
+              className="flex flex-wrap items-end gap-3 [&_[data-slot=field]]:min-w-40"
+              noValidate>
+              {/* Name field */}
+              <Controller
+                name="name"
+                control={nameControl}
+                render={({ field, fieldState }) => (
+                  <Field
+                    data-invalid={fieldState.invalid}
+                    className="flex-1">
+                    <FieldLabel htmlFor={field.name}>Name</FieldLabel>
+                    <Input
+                      {...field}
+                      id={field.name}
+                      aria-invalid={fieldState.invalid}
+                    />
+                    {fieldState.invalid && (
+                      <FieldError errors={[fieldState.error]} />
+                    )}
+                  </Field>
+                )}
+              />
 
-      <AvatarUpload />
+              {/* Save button */}
+              <Button
+                type="submit"
+                disabled={nameIsSubmitting || !nameIsDirty}
+                size="lg">
+                {nameIsSubmitting ?
+                  <Loader2Icon className="motion-safe:animate-spin" />
+                : <SaveIcon />}
+                {nameIsSubmitting ? "Saving…" : "Save"}
+              </Button>
+            </form>
+          </CardContent>
+        </Card>
 
-      <Card size="sm">
-        <CardHeader>
-          <CardTitle>Display Name</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <form
-            onSubmit={handleNameSubmitForm(handleNameSubmit)}
-            className="flex items-end gap-3"
-            noValidate>
-            {/* Name field */}
-            <Controller
-              name="name"
-              control={nameControl}
-              render={({ field, fieldState }) => (
-                <Field
-                  data-invalid={fieldState.invalid}
-                  className="flex-1">
-                  <FieldLabel htmlFor={field.name}>Name</FieldLabel>
-                  <Input
-                    {...field}
-                    id={field.name}
-                    aria-invalid={fieldState.invalid}
-                  />
-                  {fieldState.invalid && (
-                    <FieldError errors={[fieldState.error]} />
-                  )}
-                </Field>
-              )}
-            />
+        <Card size="sm">
+          <CardHeader>
+            <CardTitle>Change Password</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <form
+              onSubmit={handlePasswordSubmitForm(handlePasswordSubmit)}
+              className="grid gap-4"
+              noValidate>
+              {/* Current password field */}
+              <Controller
+                name="currentPassword"
+                control={passwordControl}
+                render={({ field, fieldState }) => (
+                  <Field data-invalid={fieldState.invalid}>
+                    <FieldLabel htmlFor={field.name}>
+                      Current Password
+                    </FieldLabel>
+                    <Input
+                      {...field}
+                      id={field.name}
+                      type="password"
+                      aria-invalid={fieldState.invalid}
+                      autoComplete="current-password"
+                    />
+                    {fieldState.invalid && (
+                      <FieldError errors={[fieldState.error]} />
+                    )}
+                  </Field>
+                )}
+              />
 
-            {/* Save button */}
-            <Button
-              type="submit"
-              disabled={nameIsSubmitting || !nameIsDirty}
-              size="lg">
-              {nameIsSubmitting ?
-                <Loader2Icon className="motion-safe:animate-spin" />
-              : <SaveIcon />}
-              {nameIsSubmitting ? "Saving…" : "Save"}
-            </Button>
-          </form>
-        </CardContent>
-      </Card>
+              {/* New password field */}
+              <Controller
+                name="newPassword"
+                control={passwordControl}
+                render={({ field, fieldState }) => (
+                  <Field data-invalid={fieldState.invalid}>
+                    <FieldLabel htmlFor={field.name}>New Password</FieldLabel>
+                    <Input
+                      {...field}
+                      id={field.name}
+                      type="password"
+                      aria-invalid={fieldState.invalid}
+                      autoComplete="new-password"
+                    />
+                    {fieldState.invalid && (
+                      <FieldError errors={[fieldState.error]} />
+                    )}
+                  </Field>
+                )}
+              />
 
-      <Card size="sm">
-        <CardHeader>
-          <CardTitle>Change Password</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <form
-            onSubmit={handlePasswordSubmitForm(handlePasswordSubmit)}
-            className="grid gap-4"
-            noValidate>
-            {/* Current password field */}
-            <Controller
-              name="currentPassword"
-              control={passwordControl}
-              render={({ field, fieldState }) => (
-                <Field data-invalid={fieldState.invalid}>
-                  <FieldLabel htmlFor={field.name}>Current Password</FieldLabel>
-                  <Input
-                    {...field}
-                    id={field.name}
-                    type="password"
-                    aria-invalid={fieldState.invalid}
-                    autoComplete="current-password"
-                  />
-                  {fieldState.invalid && (
-                    <FieldError errors={[fieldState.error]} />
-                  )}
-                </Field>
-              )}
-            />
+              {/* Confirm password field */}
+              <Controller
+                name="confirmPassword"
+                control={passwordControl}
+                render={({ field, fieldState }) => (
+                  <Field data-invalid={fieldState.invalid}>
+                    <FieldLabel htmlFor={field.name}>
+                      Confirm New Password
+                    </FieldLabel>
+                    <Input
+                      {...field}
+                      id={field.name}
+                      type="password"
+                      aria-invalid={fieldState.invalid}
+                      autoComplete="new-password"
+                    />
+                    {fieldState.invalid && (
+                      <FieldError errors={[fieldState.error]} />
+                    )}
+                  </Field>
+                )}
+              />
 
-            {/* New password field */}
-            <Controller
-              name="newPassword"
-              control={passwordControl}
-              render={({ field, fieldState }) => (
-                <Field data-invalid={fieldState.invalid}>
-                  <FieldLabel htmlFor={field.name}>New Password</FieldLabel>
-                  <Input
-                    {...field}
-                    id={field.name}
-                    type="password"
-                    aria-invalid={fieldState.invalid}
-                    autoComplete="new-password"
-                  />
-                  {fieldState.invalid && (
-                    <FieldError errors={[fieldState.error]} />
-                  )}
-                </Field>
-              )}
-            />
-
-            {/* Confirm password field */}
-            <Controller
-              name="confirmPassword"
-              control={passwordControl}
-              render={({ field, fieldState }) => (
-                <Field data-invalid={fieldState.invalid}>
-                  <FieldLabel htmlFor={field.name}>
-                    Confirm New Password
-                  </FieldLabel>
-                  <Input
-                    {...field}
-                    id={field.name}
-                    type="password"
-                    aria-invalid={fieldState.invalid}
-                    autoComplete="new-password"
-                  />
-                  {fieldState.invalid && (
-                    <FieldError errors={[fieldState.error]} />
-                  )}
-                </Field>
-              )}
-            />
-
-            {/* Change password button */}
-            <Button
-              type="submit"
-              disabled={passwordIsSubmitting || !passwordIsValid}
-              className="w-fit"
-              size="lg">
-              {passwordIsSubmitting ?
-                <Loader2Icon className="motion-safe:animate-spin" />
-              : <LockIcon />}
-              {passwordIsSubmitting ? "Changing password…" : "Change Password"}
-            </Button>
-          </form>
-        </CardContent>
-      </Card>
+              {/* Change password button */}
+              <Button
+                type="submit"
+                disabled={passwordIsSubmitting || !passwordIsValid}
+                className="w-fit"
+                size="lg">
+                {passwordIsSubmitting ?
+                  <Loader2Icon className="motion-safe:animate-spin" />
+                : <LockIcon />}
+                {passwordIsSubmitting ?
+                  "Changing password…"
+                : "Change Password"}
+              </Button>
+            </form>
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
 };

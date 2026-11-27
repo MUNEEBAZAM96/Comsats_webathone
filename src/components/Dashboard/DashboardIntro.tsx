@@ -9,12 +9,18 @@ const DashboardIntro = ({
   children: ReactNode;
   action?: ReactNode;
 }) => (
-  <header className="flex flex-col justify-between gap-4 rounded-lg border bg-secondary p-5 sm:flex-row sm:items-center">
+  <header className="dashboard-intro flex min-h-40 flex-col justify-center gap-5 overflow-hidden rounded-2xl border px-5 py-7 sm:flex-row sm:items-center sm:justify-between sm:px-7 lg:px-9">
     <div className="grid min-w-0 gap-2">
-      <h1 className="break-words">{title}</h1>
-      <p className="text-sm text-muted-foreground sm:text-base">{children}</p>
+      <h1 className="text-[clamp(1.9rem,4vw,3.15rem)]!">{title}</h1>
+      <p className="max-w-lg text-base leading-relaxed text-muted-foreground">
+        {children}
+      </p>
     </div>
-    {action}
+    {action && (
+      <div className="dashboard-intro-action flex shrink-0 flex-wrap gap-2">
+        {action}
+      </div>
+    )}
   </header>
 );
 

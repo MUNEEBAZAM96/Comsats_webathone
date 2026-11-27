@@ -1,5 +1,6 @@
 "use client";
 
+import { ResponsiveTable } from "@/components/Workspace/ResponsiveTable";
 import { format } from "date-fns";
 import { Loader2Icon, SearchIcon, Trash2Icon } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -181,8 +182,7 @@ const UsersTable = ({ initialUsers, initialTotal }: UsersTableProps) => {
         </div>
       </div>
 
-      <div
-        className="border-border overflow-x-auto rounded-3xl border"
+      <ResponsiveTable aria-label="Users"
         aria-busy={loading}>
         <p
           role="status"
@@ -316,7 +316,7 @@ const UsersTable = ({ initialUsers, initialTotal }: UsersTableProps) => {
             }
           </tbody>
         </table>
-      </div>
+      </ResponsiveTable>
 
       {totalPages > 1 && (
         <div className="flex items-center justify-between">

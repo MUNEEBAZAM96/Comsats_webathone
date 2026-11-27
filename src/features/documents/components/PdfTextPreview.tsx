@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { extractPdfText } from "@/features/documents/services/extractPdfText";
 import { Button } from "@/components/shadcnui/button";
+import { Skeleton } from "@/components/shadcnui/skeleton";
 
 export const PdfTextPreview = () => {
   const [text, setText] = useState("");
@@ -27,7 +28,9 @@ export const PdfTextPreview = () => {
   };
 
   return (
-    <div className="border-border grid gap-3 rounded-lg border p-4">
+    <div
+      aria-busy={loading}
+      className="border-border grid gap-3 rounded-lg border p-4">
       <div className="grid gap-1">
         <h3 className="text-sm font-medium">PDF source preview</h3>
         <p className="text-muted-foreground text-xs">
@@ -41,7 +44,14 @@ export const PdfTextPreview = () => {
         onChange={(e) => void onFile(e.target.files?.[0] ?? null)}
       />
       {loading ?
-        <p className="text-muted-foreground text-sm">Extracting…</p>
+        <div
+          role="status"
+          aria-label="Extracting PDF text"
+          className="grid gap-2">
+          <Skeleton className="h-4 w-28" />
+          <Skeleton className="h-36 w-full" />
+          <Skeleton className="h-10 w-36" />
+        </div>
       : null}
       {error ?
         <p className="text-destructive text-sm">{error}</p>

@@ -12,7 +12,7 @@ export const metadata: Metadata = {
 
 const ResetPasswordPage = () => {
   return (
-    <section className="grid gap-8">
+    <section className="grid gap-6">
       <AuthHeading
         title="Reset password"
         description="Choose a new password for your account."

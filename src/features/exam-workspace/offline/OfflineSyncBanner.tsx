@@ -1,6 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { InfoIcon, WifiOffIcon } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { useOnlineStatus } from "./connectivity";
 import { listPendingAnswers } from "./answer-storage";
 import { syncPendingAnswers } from "./sync-manager";
@@ -51,9 +53,7 @@ export const OfflineSyncBanner = ({ attemptId, saveAnswer }: Props) => {
       const rows = await listPendingAnswers(attemptId);
       setPending(rows.length);
       setSyncLabel(
-        result.failed > 0 ?
-          `${result.failed} answer(s) failed to sync`
-        : null,
+        result.failed > 0 ? `${result.failed} answer(s) failed to sync` : null,
       );
     } finally {
       syncingRef.current = false;
@@ -68,8 +68,23 @@ export const OfflineSyncBanner = ({ attemptId, saveAnswer }: Props) => {
 
   return (
     <div
-      className="border-border bg-card text-muted-foreground rounded-md border px-3 py-2 text-xs"
+      className={cn(
+        "exam-question-content flex items-start gap-2.5 rounded-lg border px-3 py-2.5 text-sm",
+        online ?
+          "border-info/30 bg-info-surface text-info"
+        : "border-warning/30 bg-warning-surface text-warning",
+      )}
       role="status">
+      {online ?
+        <InfoIcon
+          aria-hidden="true"
+          className="mt-0.5 size-4 shrink-0"
+        />
+      : <WifiOffIcon
+          aria-hidden="true"
+          className="mt-0.5 size-4 shrink-0"
+        />
+      }
       {!online ?
         "You are offline. Answers are saved locally and will sync when connectivity returns."
       : syncLabel ?

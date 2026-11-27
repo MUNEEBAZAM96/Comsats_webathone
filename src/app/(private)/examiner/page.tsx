@@ -3,6 +3,7 @@ import {
   DashboardRow,
   DashboardSection,
 } from "@/components/Dashboard/DashboardSection";
+import { StatusBreakdown } from "@/components/Dashboard/StatusBreakdown";
 import { StatCard } from "@/components/Dashboard/StatCard";
 import {
   ExaminerDashboardSkeleton,
@@ -107,34 +108,34 @@ const ExaminerDashboardStats = async ({ userId }: { userId: string }) => {
 
   return (
     <>
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="dashboard-stats grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
         <StatCard
-          icon={<FileTextIcon className="text-primary size-6" />}
+          icon={<FileTextIcon />}
           label="My Exams"
           value={totalExams}
         />
         <StatCard
-          icon={<BookOpenIcon className="text-primary size-6" />}
+          icon={<BookOpenIcon />}
           label="Bank Questions"
           value={questionCount}
         />
         <StatCard
-          icon={<UsersIcon className="text-primary size-6" />}
+          icon={<UsersIcon />}
           label="Students Assigned"
           value={studentCount}
         />
         <StatCard
-          icon={<GraduationCapIcon className="text-primary size-6" />}
+          icon={<GraduationCapIcon />}
           label="Total Attempts"
           value={totalAttempts}
         />
       </div>
 
-      <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+      <div className="dashboard-section grid gap-4 lg:grid-cols-[minmax(0,1.65fr)_minmax(0,1fr)]">
         <DashboardSection
           id="examiner-exams"
           title="Your exams">
-          {recentExams.length ? (
+          {recentExams.length ?
             <ul>
               {recentExams.map((exam) => (
                 <DashboardRow key={exam.id}>
@@ -162,26 +163,28 @@ const ExaminerDashboardStats = async ({ userId }: { userId: string }) => {
                 </DashboardRow>
               ))}
             </ul>
-          ) : (
-            <p className="text-sm text-muted-foreground">
+          : <p className="text-sm text-muted-foreground">
               Create your first exam to start preparing an assessment.
             </p>
-          )}
+          }
         </DashboardSection>
 
         <DashboardSection
           id="examiner-preparation"
           title="Exam preparation">
-          <dl className="grid gap-2">
-            <div className="flex items-center justify-between gap-2">
-              <dt className="text-muted-foreground">Draft</dt>
-              <dd className="font-medium">{draftExams}</dd>
-            </div>
-            <div className="flex items-center justify-between gap-2">
-              <dt className="text-muted-foreground">Published</dt>
-              <dd className="font-medium">{publishedExams}</dd>
-            </div>
-          </dl>
+          <StatusBreakdown
+            items={[
+              { label: "Draft", count: draftExams, tone: "warning" },
+              { label: "Published", count: publishedExams, tone: "info" },
+              {
+                label: "Completed",
+                count:
+                  examCounts.find(({ status }) => status === "completed")
+                    ?._count ?? 0,
+                tone: "success",
+              },
+            ]}
+          />
           <DashboardLink
             href="/examiner/questions"
             variant="outline"

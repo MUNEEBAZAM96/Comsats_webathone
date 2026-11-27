@@ -1,5 +1,6 @@
 "use client";
 
+import { ResponsiveTable } from "@/components/Workspace/ResponsiveTable";
 import {
   EditIcon,
   EyeIcon,
@@ -81,7 +82,7 @@ const ExamsTable = ({ exams, basePath }: ExamsTableProps) => {
   }
 
   return (
-    <div className="border-border overflow-x-auto rounded-3xl border">
+    <ResponsiveTable aria-label="Exams">
       <table className="w-full text-sm">
         <thead>
           <tr className="border-border bg-muted/50 border-b">
@@ -201,7 +202,7 @@ const ExamsTable = ({ exams, basePath }: ExamsTableProps) => {
           ))}
         </tbody>
       </table>
-    </div>
+    </ResponsiveTable>
   );
 };
 

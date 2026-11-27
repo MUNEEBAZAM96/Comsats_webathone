@@ -1,5 +1,6 @@
 "use client";
 
+import { ConfirmAction } from "@/components/Workspace/ConfirmAction";
 import { Loader2Icon, PlusIcon, Trash2Icon, XIcon } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -69,7 +70,6 @@ const AssignStudents = ({
   };
 
   const handleUnassign = async (userId: string) => {
-    if (!confirm("Remove this student from the exam?")) return;
     setRemoving(userId);
     try {
       await unassignExam(examId, userId);
@@ -98,21 +98,29 @@ const AssignStudents = ({
             <div
               key={a.userId}
               className="border-border bg-card flex items-center justify-between gap-4 rounded-3xl border p-4">
-              <div className="grid gap-0.5">
+              <div className="grid min-w-0 gap-0.5 wrap-anywhere">
                 <span className="text-sm font-medium">{a.user.name}</span>
                 <span className="text-muted-foreground text-xs">
                   {a.user.email}
                 </span>
               </div>
-              <Button
-                variant="outline"
-                size="icon-xs"
-                onClick={() => handleUnassign(a.userId)}
-                disabled={removing === a.userId}>
-                {removing === a.userId ?
-                  <Loader2Icon className="size-3 animate-spin" />
-                : <Trash2Icon className="text-destructive size-3" />}
-              </Button>
+              <ConfirmAction
+                title="Remove candidate?"
+                description={`${a.user.name} will be removed from this exam.`}
+                actionLabel="Remove"
+                onConfirm={() => void handleUnassign(a.userId)}
+                trigger={
+                  <Button
+                    aria-label={`Remove ${a.user.name}`}
+                    variant="outline"
+                    size="icon"
+                    disabled={removing === a.userId}>
+                    {removing === a.userId ?
+                      <Loader2Icon aria-hidden="true" className="motion-safe:animate-spin" />
+                    : <Trash2Icon aria-hidden="true" className="text-destructive" />}
+                  </Button>
+                }
+              />
             </div>
           ))}
         </div>

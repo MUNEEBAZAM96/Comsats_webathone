@@ -12,7 +12,7 @@ const AuthHeading = ({
     >
       {title}
     </h1>
-    <p className="leading-relaxed text-muted-foreground">{description}</p>
+    <p className="max-w-prose leading-relaxed text-muted-foreground">{description}</p>
   </div>
 );
 

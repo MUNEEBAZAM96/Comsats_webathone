@@ -6,9 +6,9 @@ import {
   UsersIcon,
 } from "lucide-react";
 import { requireRole } from "@/server/session";
-import Link from "next/link";
-import { Badge } from "@/components/shadcnui/badge";
-import { Button } from "@/components/shadcnui/button";
+import { DashboardIntro } from "@/components/Dashboard/DashboardIntro";
+import { DashboardLink } from "@/components/Dashboard/DashboardLink";
+import { StatusBreakdown } from "@/components/Dashboard/StatusBreakdown";
 import {
   Card,
   CardContent,
@@ -73,124 +73,140 @@ const ProctorDashboardContent = async () => {
   );
 
   return (
-    <section className="grid gap-8">
-      <div>
-        <h1 className="text-2xl font-medium">Proctor Dashboard</h1>
-        <p className="text-muted-foreground">
-          Welcome back, {session?.user.name}
-        </p>
-      </div>
+    <section className="grid gap-6">
+      <DashboardIntro
+        title="Proctor overview"
+        action={
+          <DashboardLink href="/proctor/exams">
+            <EyeIcon aria-hidden="true" /> Assigned exams
+          </DashboardLink>
+        }>
+        Monitor candidate activity and review your assigned exams.
+      </DashboardIntro>
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="dashboard-stats grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
         <StatCard
-          icon={<FileTextIcon className="text-primary size-6" />}
+          icon={<FileTextIcon />}
           label="Assigned Exams"
           value={totalExams}
         />
         <StatCard
-          icon={<UsersIcon className="text-primary size-6" />}
+          icon={<UsersIcon />}
           label="Total Students"
           value={totalStudents}
         />
         <StatCard
-          icon={<GraduationCapIcon className="text-primary size-6" />}
+          icon={<GraduationCapIcon />}
           label="Total Attempts"
           value={totalAttempts}
         />
         <StatCard
-          icon={<EyeIcon className="text-primary size-6" />}
+          icon={<EyeIcon />}
           label="Active Now"
           value={inProgressCount}
         />
       </div>
 
-      {examsWithActivity.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Live Activity</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid gap-2">
-              {examsWithActivity.map((pa) => (
-                <div
-                  key={pa.id}
-                  className="border-border flex items-center justify-between gap-4 rounded-3xl border p-4">
-                  <div>
-                    <p className="font-medium">
-                      {pa.exam.title || `Exam ${pa.examId}`}
-                    </p>
-                    <p className="text-muted-foreground text-xs">
-                      {pa.exam._count.assignments} students &middot;{" "}
-                      {pa.exam._count.attempts} attempt(s)
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="relative flex size-2">
-                      <span className="absolute inline-flex size-full animate-ping rounded-full bg-emerald-400 opacity-75" />
-                      <span className="relative inline-flex size-2 rounded-full bg-emerald-500" />
-                    </span>
-                    <Badge variant="outline">
-                      {pa.exam._count.attempts} active
-                    </Badge>
-                    <Link href={`/proctor/exams/${pa.examId}` as Route}>
-                      <Button
-                        variant="outline"
-                        size="lg">
-                        <EyeIcon className="size-4" /> Monitor
-                      </Button>
-                    </Link>
-                  </div>
+      <div className="dashboard-section grid gap-4 xl:grid-cols-[minmax(0,1.65fr)_minmax(0,1fr)]">
+        <div className="grid min-w-0 content-start gap-4">
+          {examsWithActivity.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Session activity</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid gap-2">
+                  {examsWithActivity.map((pa) => (
+                    <div
+                      key={pa.id}
+                      className="border-border flex flex-wrap items-center justify-between gap-3 rounded-xl border p-4">
+                      <div>
+                        <p className="font-medium">
+                          {pa.exam.title || `Exam ${pa.examId}`}
+                        </p>
+                        <p className="text-muted-foreground text-xs">
+                          {pa.exam._count.assignments} students &middot;{" "}
+                          {pa.exam._count.attempts} attempt(s)
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <DashboardLink
+                          href={`/proctor/exams/${pa.examId}` as Route}
+                          variant="outline">
+                          <EyeIcon aria-hidden="true" /> Monitor
+                        </DashboardLink>
+                      </div>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {totalExams === 0 && (
+            <Card className="p-8 text-center">
+              <p className="text-muted-foreground mb-4">
+                You haven&apos;t been assigned to any exams yet.
+              </p>
+            </Card>
+          )}
+
+          {totalExams > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Your Assigned Exams</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid gap-3">
+                  {proctorAssignments.map((pa) => (
+                    <div
+                      key={pa.id}
+                      className="border-border bg-card flex flex-wrap items-center justify-between gap-3 rounded-xl border p-4">
+                      <div>
+                        <p className="font-medium">
+                          {pa.exam.title || `Exam ${pa.examId}`}
+                        </p>
+                        <p className="text-muted-foreground text-xs">
+                          {pa.exam._count.assignments} students &middot;{" "}
+                          {pa.exam._count.attempts} attempt(s)
+                        </p>
+                      </div>
+                      <DashboardLink
+                        href={`/proctor/exams/${pa.examId}` as Route}
+                        variant="outline">
+                        <EyeIcon aria-hidden="true" /> Monitor
+                      </DashboardLink>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+        </div>
+        <Card className="self-start">
+          <CardHeader>
+            <CardTitle>Attempt status</CardTitle>
+          </CardHeader>
+          <CardContent className="grid gap-5">
+            <StatusBreakdown
+              items={[
+                { label: "In progress", count: inProgressCount, tone: "info" },
+                {
+                  label: "Other attempts",
+                  count: Math.max(0, totalAttempts - inProgressCount),
+                },
+              ]}
+            />
+            <DashboardLink
+              href="/proctor/results"
+              variant="outline">
+              View results
+            </DashboardLink>
           </CardContent>
         </Card>
-      )}
-
-      {totalExams === 0 && (
-        <Card className="p-8 text-center">
-          <p className="text-muted-foreground mb-4">
-            You haven&apos;t been assigned to any exams yet.
-          </p>
-        </Card>
-      )}
-
-      {totalExams > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Your Assigned Exams</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid gap-3">
-              {proctorAssignments.map((pa) => (
-                <div
-                  key={pa.id}
-                  className="border-border bg-card flex items-center justify-between gap-4 rounded-3xl border p-4">
-                  <div>
-                    <p className="font-medium">
-                      {pa.exam.title || `Exam ${pa.examId}`}
-                    </p>
-                    <p className="text-muted-foreground text-xs">
-                      {pa.exam._count.assignments} students &middot;{" "}
-                      {pa.exam._count.attempts} attempt(s)
-                    </p>
-                  </div>
-                  <Link href={`/proctor/exams/${pa.examId}` as Route}>
-                    <Button
-                      variant="outline"
-                      size="lg">
-                      <EyeIcon className="size-4" /> Monitor
-                    </Button>
-                  </Link>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      )}
+      </div>
     </section>
   );
 };
 
 export default ProctorDashboardPage;
-

@@ -9,6 +9,8 @@ const DashboardLink = ({
   ...props
 }: ComponentProps<typeof Link> & { variant?: "default" | "outline" }) => (
   <Link
+    data-slot="button"
+    data-variant={variant}
     className={cn(buttonVariants({ size: "lg", variant }), "w-fit", className)}
     {...props}
   />

@@ -36,25 +36,25 @@ const ProctorExamsPage = async () => {
           {exams.map((exam) => (
             <div
               key={exam.id}
-              className="border-border bg-card flex items-center justify-between gap-4 rounded-3xl border p-4">
-              <div className="grid gap-0.5">
-                <span className="text-sm font-medium">{exam.title}</span>
-                <div className="text-muted-foreground flex items-center gap-3 text-xs">
-                  <span>{exam._count.questions} question(s)</span>
-                  <span>{exam._count.assignments} student(s)</span>
-                  <span>{exam._count.attempts} attempt(s)</span>
-                  <span className="bg-muted rounded-full px-2 py-0.5 text-[10px] uppercase">
+              className="flex min-w-0 flex-wrap items-center justify-between gap-3 rounded-xl border bg-card p-4 sm:gap-4">
+              <div className="grid min-w-0 flex-1 basis-60 gap-1">
+                <span className="wrap-anywhere text-sm font-medium">{exam.title}</span>
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
+                  <span>{exam._count.questions} questions</span>
+                  <span>{exam._count.assignments} candidates</span>
+                  <span>{exam._count.attempts} attempts</span>
+                  <span className="rounded-full bg-muted px-2 py-0.5 text-xs capitalize">
                     {exam.status}
                   </span>
                 </div>
               </div>
-              <Link href={`/proctor/exams/${exam.id}`}>
-                <Button
-                  variant="outline"
-                  size="lg">
-                  <EyeIcon className="size-4" /> Monitor
-                </Button>
-              </Link>
+              <Button
+                variant="outline"
+                size="lg"
+                nativeButton={false}
+                render={<Link href={`/proctor/exams/${exam.id}`} />}>
+                <EyeIcon aria-hidden="true" /> Monitor
+              </Button>
             </div>
           ))}
         </div>

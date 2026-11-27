@@ -187,7 +187,7 @@ function Sidebar({
           data-sidebar="sidebar"
           data-slot="sidebar"
           data-mobile="true"
-          className="w-(--sidebar-width) bg-sidebar p-0 text-sidebar-foreground [&>button]:hidden"
+          className="w-(--sidebar-width) bg-sidebar p-0 text-sidebar-foreground"
           style={
             {
               "--sidebar-width": SIDEBAR_WIDTH_MOBILE,
@@ -256,12 +256,13 @@ function SidebarTrigger({
   onClick,
   ...props
 }: React.ComponentProps<typeof Button>) {
-  const { toggleSidebar } = useSidebar()
+  const { toggleSidebar, isMobile, openMobile, open } = useSidebar()
 
   return (
     <Button
       data-sidebar="trigger"
       data-slot="sidebar-trigger"
+      aria-expanded={isMobile ? openMobile : open}
       variant="ghost"
       size="icon-sm"
       className={cn(className)}

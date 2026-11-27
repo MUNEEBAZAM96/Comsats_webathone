@@ -1,3 +1,4 @@
+import { ResponsiveTable } from "@/components/Workspace/ResponsiveTable";
 import { format } from "date-fns";
 import type { Metadata, Route } from "next";
 import Link from "next/link";
@@ -84,7 +85,7 @@ const AdminExamResultsPage = async ({
             Students haven&apos;t submitted any attempts for this exam.
           </p>
         </div>
-      : <div className="border-border overflow-x-auto rounded-3xl border">
+      : <ResponsiveTable aria-label="Exam results">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-border bg-muted/50 border-b">
@@ -138,7 +139,7 @@ const AdminExamResultsPage = async ({
               })}
             </tbody>
           </table>
-        </div>
+        </ResponsiveTable>
       }
     </section>
   );

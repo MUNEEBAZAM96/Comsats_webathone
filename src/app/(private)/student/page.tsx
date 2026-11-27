@@ -10,6 +10,9 @@ import {
 } from "@/components/shadcnui/card";
 import { Button } from "@/components/shadcnui/button";
 import { Badge } from "@/components/shadcnui/badge";
+import { DashboardIntro } from "@/components/Dashboard/DashboardIntro";
+import { DashboardLink } from "@/components/Dashboard/DashboardLink";
+import { StatusBreakdown } from "@/components/Dashboard/StatusBreakdown";
 import { StatCard } from "@/components/Dashboard/StatCard";
 import {
   ClockIcon,
@@ -19,7 +22,6 @@ import {
   RotateCcwIcon,
   TargetIcon,
 } from "lucide-react";
-import Link from "next/link";
 import type { Route } from "next";
 import { Suspense } from "react";
 import { DashboardShellSkeleton } from "@/components/Dashboard/DashboardShellSkeleton";
@@ -60,6 +62,7 @@ const StudentDashboardContent = async () => {
       select: {
         id: true,
         examId: true,
+        exam: { select: { title: true } },
         status: true,
         autoScore: true,
         maxScore: true,
@@ -113,172 +116,229 @@ const StudentDashboardContent = async () => {
     : null;
 
   return (
-    <section className="grid gap-8">
-      <div>
-        <h1 className="text-2xl font-medium">Student Dashboard</h1>
-        <p className="text-muted-foreground">
-          Welcome back, {session?.user.name}
-        </p>
-      </div>
+    <section className="grid gap-6">
+      <DashboardIntro
+        title={`Welcome back, ${session.user.name}`}
+        action={
+          <>
+            <DashboardLink href="/student/exams">
+              <FileTextIcon aria-hidden="true" /> My exams
+            </DashboardLink>
+            <DashboardLink
+              href="/student/results"
+              variant="outline">
+              <GraduationCapIcon aria-hidden="true" /> My results
+            </DashboardLink>
+          </>
+        }>
+        Track your exam schedule and pick up where you left off.
+      </DashboardIntro>
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="dashboard-stats grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
         <StatCard
-          icon={<FileTextIcon className="text-primary size-6" />}
+          icon={<FileTextIcon />}
           label="Pending Exams"
           value={pendingExams.length}
         />
         <StatCard
-          icon={<RotateCcwIcon className="text-primary size-6" />}
+          icon={<RotateCcwIcon />}
           label="In Progress"
           value={inProgressAttempts.length}
         />
         <StatCard
-          icon={<GraduationCapIcon className="text-primary size-6" />}
+          icon={<GraduationCapIcon />}
           label="Completed"
           value={completedAttempts.length}
         />
         <StatCard
-          icon={<TargetIcon className="text-primary size-6" />}
+          icon={<TargetIcon />}
           label="Avg Score"
           value={avgScore !== null ? `${avgScore}/${maxAvgScore}` : "—"}
         />
       </div>
 
-      {pendingExams.length > 0 && (
-        <Card>
+      <div className="dashboard-section grid gap-4 xl:grid-cols-[minmax(0,1.65fr)_minmax(0,1fr)]">
+        <div className="grid min-w-0 content-start gap-4">
+          {pendingExams.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Ready to Start</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid gap-3">
+                  {pendingExams.map((a) => (
+                    <div
+                      key={a.examId}
+                      className="border-border flex flex-wrap items-center justify-between gap-3 rounded-xl border p-4">
+                      <div>
+                        <p className="font-medium">{a.exam.title}</p>
+                        <p className="text-muted-foreground text-xs">
+                          {a.exam.duration} min
+                          {a.exam.endTime &&
+                            ` · ends ${format(a.exam.endTime, "MMM d, yyyy")}`}
+                        </p>
+                      </div>
+                      <DashboardLink
+                        prefetch={false}
+                        href={`/student/exams/${a.exam.id}` as Route}>
+                        <PlayIcon aria-hidden="true" /> Start
+                      </DashboardLink>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {upcomingExams.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Upcoming Exams</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid gap-3">
+                  {upcomingExams.map((a) => (
+                    <div
+                      key={a.examId}
+                      className="border-border flex flex-wrap items-center justify-between gap-3 rounded-xl border p-4">
+                      <div>
+                        <p className="font-medium">{a.exam.title}</p>
+                        <p className="text-muted-foreground text-xs">
+                          {a.exam.duration} min
+                          {a.exam.startTime &&
+                            ` · starts ${format(a.exam.startTime, "MMM d, yyyy")}`}
+                        </p>
+                      </div>
+                      <Button
+                        size="lg"
+                        disabled>
+                        <ClockIcon className="size-4" /> Scheduled
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {inProgressAttempts.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Continue Exams</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid gap-3">
+                  {inProgressAttempts.slice(0, 5).map((a) => (
+                    <div
+                      key={a.id}
+                      className="border-border flex flex-wrap items-center justify-between gap-3 rounded-xl border p-4">
+                      <div>
+                        <p className="font-medium">{a.exam.title}</p>
+                      </div>
+                      <DashboardLink
+                        prefetch={false}
+                        href={`/student/exams/${a.examId}` as Route}>
+                        <RotateCcwIcon aria-hidden="true" /> Resume
+                      </DashboardLink>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {recentAttempts.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Recent Results</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid gap-2">
+                  {recentAttempts.map((a) => (
+                    <div
+                      key={a.id}
+                      className="border-border flex items-center justify-between gap-2 border-b pb-2 last:border-0 last:pb-0">
+                      <div>
+                        <p className="text-sm font-medium">{a.exam.title}</p>
+                        <p className="text-muted-foreground text-xs">
+                          {a.submittedAt ?
+                            format(a.submittedAt, "MMM d, yyyy")
+                          : "—"}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {a.autoScore !== null && (
+                          <span className="text-xs font-medium">
+                            {a.autoScore}/{a.maxScore}
+                          </span>
+                        )}
+                        <Badge
+                          variant={
+                            a.status === "graded" ? "default" : "outline"
+                          }>
+                          {a.status === "graded" ? "Graded" : "Submitted"}
+                        </Badge>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {pendingExams.length +
+            upcomingExams.length +
+            inProgressAttempts.length +
+            recentAttempts.length ===
+            0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Your exam schedule</CardTitle>
+              </CardHeader>
+              <CardContent className="grid gap-4">
+                <p className="text-muted-foreground">
+                  {assignments.length ?
+                    "There are no exams scheduled right now."
+                  : "Your assigned exams will appear here. Contact your examiner if you’re expecting an assignment."
+                  }
+                </p>
+                <DashboardLink
+                  href="/student/exams"
+                  variant="outline">
+                  View all exams
+                </DashboardLink>
+              </CardContent>
+            </Card>
+          )}
+        </div>
+        <Card className="self-start">
           <CardHeader>
-            <CardTitle>Ready to Start</CardTitle>
+            <CardTitle>Assessment progress</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="grid gap-3">
-              {pendingExams.map((a) => (
-                <div
-                  key={a.examId}
-                  className="border-border flex items-center justify-between gap-4 rounded-3xl border p-4">
-                  <div>
-                    <p className="font-medium">{a.exam.title}</p>
-                    <p className="text-muted-foreground text-xs">
-                      {a.exam.duration} min
-                      {a.exam.endTime &&
-                        ` · ends ${format(a.exam.endTime, "MMM d, yyyy")}`}
-                    </p>
-                  </div>
-                  <Link href={`/student/exams/${a.exam.id}` as Route}>
-                    <Button size="lg">
-                      <PlayIcon className="size-4" /> Start
-                    </Button>
-                  </Link>
-                </div>
-              ))}
-            </div>
+            <StatusBreakdown
+              items={[
+                {
+                  label: "Upcoming",
+                  count: upcomingExams.length,
+                  tone: "info",
+                },
+                { label: "Ready to start", count: pendingExams.length },
+                {
+                  label: "In progress",
+                  count: inProgressAttempts.length,
+                  tone: "warning",
+                },
+                {
+                  label: "Completed",
+                  count: completedAttempts.length,
+                  tone: "success",
+                },
+              ]}
+            />
           </CardContent>
         </Card>
-      )}
-
-      {upcomingExams.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Upcoming Exams</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid gap-3">
-              {upcomingExams.map((a) => (
-                <div
-                  key={a.examId}
-                  className="border-border flex items-center justify-between gap-4 rounded-3xl border p-4">
-                  <div>
-                    <p className="font-medium">{a.exam.title}</p>
-                    <p className="text-muted-foreground text-xs">
-                      {a.exam.duration} min
-                      {a.exam.startTime &&
-                        ` · starts ${format(a.exam.startTime, "MMM d, yyyy")}`}
-                    </p>
-                  </div>
-                  <Button
-                    size="lg"
-                    disabled>
-                    <ClockIcon className="size-4" /> Scheduled
-                  </Button>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {inProgressAttempts.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Continue Exams</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid gap-3">
-              {inProgressAttempts.slice(0, 5).map((a) => (
-                <div
-                  key={a.id}
-                  className="border-border flex items-center justify-between gap-4 rounded-3xl border p-4">
-                  <div>
-                    <p className="font-medium">Exam in progress</p>
-                  </div>
-                  <Link href={`/student/exams` as Route}>
-                    <Button size="lg">
-                      <RotateCcwIcon className="size-4" /> Resume
-                    </Button>
-                  </Link>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {recentAttempts.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Recent Results</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid gap-2">
-              {recentAttempts.map((a) => (
-                <div
-                  key={a.id}
-                  className="border-border flex items-center justify-between gap-2 border-b pb-2 last:border-0 last:pb-0">
-                  <div>
-                    <p className="text-sm font-medium">{a.exam.title}</p>
-                    <p className="text-muted-foreground text-xs">
-                      {a.submittedAt ?
-                        format(a.submittedAt, "MMM d, yyyy")
-                      : "—"}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {a.autoScore !== null && (
-                      <span className="text-xs font-medium">
-                        {a.autoScore}/{a.maxScore}
-                      </span>
-                    )}
-                    <Badge
-                      variant={a.status === "graded" ? "default" : "outline"}>
-                      {a.status === "graded" ? "Graded" : "Submitted"}
-                    </Badge>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {assignments.length === 0 && (
-        <Card className="p-8 text-center">
-          <p className="text-muted-foreground mb-4">
-            You haven&apos;t been assigned any exams yet.
-          </p>
-          <p className="text-muted-foreground text-xs">
-            Contact your examiner to get started.
-          </p>
-        </Card>
-      )}
+      </div>
     </section>
   );
 };
