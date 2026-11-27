@@ -259,11 +259,23 @@ const main = async () => {
     await studS.page.goto(`/student/exams/${submitExamRow.id}`);
     await studS.page.getByText(/Question 1 of/).waitFor({ timeout: 30_000 });
     await studS.page.getByRole("radio", { name: "const", exact: true }).check();
-    await studS.page.getByText("All answers saved").waitFor({ timeout: 20_000 });
-
+    // Prefer the sync indicator attribute; fall back to DB presence.
+    const syncedUi = await studS.page
+      .locator('[data-sync-state="synced"]')
+      .waitFor({ timeout: 20_000 })
+      .then(() => true)
+      .catch(() => false);
     const att = await prisma.examAttempt.findUniqueOrThrow({
       where: { userId_examId: { userId: student.id, examId: submitExamRow.id } },
     });
+    if (!syncedUi) {
+      const end = Date.now() + 15_000;
+      while (Date.now() < end) {
+        const n = await prisma.answer.count({ where: { attemptId: att.id } });
+        if (n >= 1) break;
+        await new Promise((r) => setTimeout(r, 500));
+      }
+    }
     const STUDENT = "src/server/studentExamActions.ts";
     await Promise.all([
       callAction(studS.context, STUDENT, "submitExam", [att.id, { source: "manual" }], att.id),

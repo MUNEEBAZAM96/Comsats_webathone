@@ -236,7 +236,7 @@ const until = async (fn: () => Promise<boolean>, timeout: number, every = 800) =
 };
 
 const waitSaved = (page: Page, timeout = 20_000) =>
-  page.getByText("All answers saved").waitFor({ timeout });
+  page.locator('[data-sync-state="synced"]').waitFor({ timeout });
 
 const nextQ = async (page: Page, n: number, of: number) => {
   await page.getByRole("button", { name: "Next" }).click();

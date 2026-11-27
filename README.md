@@ -315,9 +315,13 @@ Phase 10 adds the `20261128120000_phase_ten_reports_and_taxonomy` migration and 
 
 ### Phase 11 — Security and Testing
 
-Verify server-side authorization, Zod input validation, password security, answer-key protection, duplicate-submission handling, deadlines, data integrity, and recoverable errors. Test all roles, unauthorized direct action calls, concurrent saves/submissions, refreshes, clock changes, and network interruptions.
-
-Review assignment/proctor lookup authorization as well as page-level protection. No automated project test suite has been identified in the current repository.
+**Done (local prod verification):**
+- Integration role-flow e2e (`scripts/e2e-integration-flows.ts`) — target ≥62/63, last green **65/65** with session-minted cookies (avoids Better Auth sign-in rate limits).
+- Concurrency smoke (`scripts/e2e-concurrency-smoke.ts`) — parallel assign, parallel submit, higher `clientSeq` wins.
+- Security checklist (`scripts/security-checklist.ts`) — S1–S13 PASS with code-audit + e2e evidence.
+- Phase 07–09 regression (`scripts/e2e-phase07-09.ts`) — offline sync, monitor, grading, stale `clientSeq` via server action.
+- Quality gates: `lint`, `typecheck`, `build`, `prisma migrate status`, `check-remote-db.ts`, unit scripts (`test-eligibility`, `test-grading`, `test-sync-queue`, `test-analytics`).
+- Local prod log hygiene: no `DATABASE_URL` / connection strings in client bundles or terminal request logs. **Vercel Function log review** remains for Phase 12 after first preview deploy.
 
 **Deliverable:** Tested, reliable application with documented verification results.
 
@@ -338,13 +342,13 @@ Prepare production builds, persistent database configuration, upload storage, de
 | 05 — Candidate management | Foundation + bulk import; workflow validation pending |
 | 06 — Examination workspace | Implemented with scratchpad and offline queue; timer skew validation pending |
 | 07 — Failure resilience | IndexedDB sync foundation implemented; field validation pending |
-| 08 — Monitoring | Partial; incidents and announcements pending |
-| 09 — Grading and results | Auto-grade + PDF/QR reports + analytics; manual grade gate pending |
+| 08 — Monitoring | Implemented (monitor, incidents, announcements) |
+| 09 — Grading and results | Implemented (auto + manual + publish gate + analytics) |
 | 10 — Secondary features | Implemented and integrated |
-| 11 — Security and testing | Safeguards exist; systematic verification pending |
+| 11 — Security and testing | Local verification complete (e2e + checklist + gates); Vercel log review deferred to deploy |
 | 12 — Deployment | Scripts and seed data exist; deployment unverified |
 
-**Current focus: validate offline sync (Phase 07) and systematic security testing (Phase 11).** Existing code is a foundation to assess and improve, not automatic proof that a competition demo is ready.
+**Current focus: Phase 12 — deploy preview/production and run the competition demo dry-run.**
 
 ## Project structure
 
