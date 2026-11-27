@@ -224,6 +224,9 @@ export const startExam = async (examId: string) => {
       const questions = await tx.question.findMany({
         where: { examId },
         orderBy: { order: "asc" },
+        include: {
+          section: { select: { title: true, instructions: true } },
+        },
       });
       if (questions.length === 0)
         throw new Error("This exam has no questions yet. Contact your examiner.");

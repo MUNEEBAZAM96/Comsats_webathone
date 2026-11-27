@@ -164,7 +164,7 @@ Optional remote connectivity check (reads schema + counts; creates and deletes a
 npx tsx scripts/check-remote-db.ts
 ```
 
-The seed creates four demo users and a Programming question-bank hierarchy with ten questions. It does not provide a complete assigned-exam demonstration scenario.
+The seed creates four demo users, a Programming question-bank hierarchy, demo exam papers, assignments, proctors, and sample attempt/result data for a competition walkthrough.
 
 ### 4. Start the application
 
@@ -303,6 +303,18 @@ A fully offline reload opens a read-only recovery page for pending drafts in the
 
 **Deliverable:** Complete evaluation and controlled results workflow.
 
+### Paper setting / Exam Builder
+
+Admin and examiners author papers in a multi-step builder:
+
+- Routes: `/admin|examiner/exams/[id]/builder` (and the exam detail page), plus `/preview` for a candidate-safe view (no answer keys, no attempt).
+- Steps: details → question set → settings → review & publish.
+- Question set: import from bank (filters + random), add manually, upload CSV/JSON with row-level validation and preview, sections (`ExamSection`), reorder with accessible move controls, undo remove.
+- Settings expose only engine-backed options (schedule, shuffle, pass mark %, result reveal). Auto-submit and scratchpad remain in the student workspace.
+- Publish uses `evaluatePublishReadiness` + existing `publishExam` ownership/lifecycle checks.
+- Migration: `20261127180000_exam_sections_paper_setting`.
+- Unit checks: `npx tsx scripts/test-paper-setting.ts`.
+
 ### Phase 10 — Secondary Features
 
 Candidates can open an ungraded practice exam, set local workspace preferences, and keep private notes and drawings per attempt. The examination workspace queues edits in IndexedDB. If a candidate reloads offline, a recovery page shows pending drafts from the current tab. Reconnection restores the workspace while the attempt is active. The server rejects late writes and keeps its copy when an edit's sequence is equal to or lower than its saved version.
@@ -327,9 +339,54 @@ Phase 10 adds the `20261128120000_phase_ten_reports_and_taxonomy` migration and 
 
 ### Phase 12 — Deployment and Demonstration
 
-Prepare production builds, persistent database configuration, upload storage, deployment, fictional exam data, test accounts, documentation, and a repeatable demonstration workflow. Current avatars are written to the local filesystem, which also needs a deployment storage decision.
+**Local readiness (done):**
+- `npm run lint` / `typecheck` / `build` pass
+- `npx prisma migrate deploy` — schema up to date on Supabase
+- `npm run seed` — demo users + bank + sample exams
+- Cloudinary configured for avatars (no Vercel filesystem uploads)
+- `vercel.json` pins install/build commands and Node-friendly Next.js settings
+- `npx tsx scripts/check-deploy-readiness.ts` validates required env keys (never prints values)
 
-**Deliverable:** Deployed application ready for the competition. Deployment is not yet verified. Required features must remain usable without paid APIs, paid keys, or billing-required services, following the competition rules.
+**Vercel deploy (operator steps — requires `npx vercel login`):**
+
+1. Log in and link the project:
+   ```bash
+   npx vercel login
+   npx vercel link
+   ```
+2. In the Vercel project settings, set **Node.js 24.x**.
+3. Add these env vars for **Preview** and **Production** (never commit them):
+
+   | Variable | Notes |
+   | --- | --- |
+   | `DATABASE_URL` | Supabase URI + `sslmode=require&uselibpqcompat=true` |
+   | `BETTER_AUTH_SECRET` | ≥32 chars; keep stable (used with Argon2) |
+   | `BETTER_AUTH_URL` | Canonical **HTTPS** deploy origin |
+   | `BETTER_AUTH_ALLOWED_ORIGINS` | Same origin(s), comma-separated |
+   | `BETTER_AUTH_TELEMETRY` | `0` |
+   | `CHECKPOINT_DISABLE` | `1` |
+   | `CLOUDINARY_CLOUD_NAME` / `API_KEY` / `API_SECRET` / `FOLDER_MODE` | Required for avatars |
+
+4. Deploy:
+   ```bash
+   npx vercel          # preview
+   npx vercel --prod   # production
+   ```
+5. After the first URL is known, set `BETTER_AUTH_URL` + `BETTER_AUTH_ALLOWED_ORIGINS` to that `https://…` origin and **redeploy** (cookies, sessions, and QR verify links depend on it).
+6. Apply DB migrations/seed from a trusted machine (not the Vercel build):
+   ```bash
+   npx prisma migrate deploy
+   npm run seed
+   ```
+7. Post-deploy: complete the checklist in [docs/deploy-verification.md](./docs/deploy-verification.md). Review **Vercel Function logs** after login + one exam submit — no `DATABASE_URL`, secrets, or answer keys.
+
+**Live deployment:**
+- Production URL: [https://comsats-webathone.vercel.app](https://comsats-webathone.vercel.app)
+- Vercel project: `ali-akbar-zaidis-projects/comsats-webathone`
+- Env includes Supabase + Better Auth + Cloudinary; `BETTER_AUTH_URL` set to the production HTTPS origin
+- GitHub auto-connect was skipped (repo ownership differs from the Vercel account). Deploy with `npx vercel --prod` / `npx vercel redeploy …`
+- If a deploy is blocked with `TEAM_ACCESS_REQUIRED`, use `npx vercel redeploy <url> --non-interactive` or invite the commit author to the Vercel team
+- Complete [docs/deploy-verification.md](./docs/deploy-verification.md) on the live URL (auth → exam → monitor → results → log hygiene)
 
 ## Current development status
 
@@ -345,10 +402,10 @@ Prepare production builds, persistent database configuration, upload storage, de
 | 08 — Monitoring | Implemented (monitor, incidents, announcements) |
 | 09 — Grading and results | Implemented (auto + manual + publish gate + analytics) |
 | 10 — Secondary features | Implemented and integrated |
-| 11 — Security and testing | Local verification complete (e2e + checklist + gates); Vercel log review deferred to deploy |
-| 12 — Deployment | Scripts and seed data exist; deployment unverified |
+| 11 — Security and testing | Local verification complete (e2e + checklist + gates); Vercel log review deferred to first deploy |
+| 12 — Deployment | Live at https://comsats-webathone.vercel.app; finish deploy-verification checklist |
 
-**Current focus: Phase 12 — deploy preview/production and run the competition demo dry-run.**
+**Current focus: run the live demo checklist in docs/deploy-verification.md and disable Deployment Protection if judges need public access.**
 
 ## Project structure
 

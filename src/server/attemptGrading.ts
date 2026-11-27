@@ -41,6 +41,9 @@ export const ensureAttemptSnapshots = async (
   const questions = await prisma.question.findMany({
     where: { examId: exam.id },
     orderBy: { order: "asc" },
+    include: {
+      section: { select: { title: true, instructions: true } },
+    },
   });
   if (questions.length === 0) return;
 
@@ -63,6 +66,7 @@ export const buildSnapshotRows = (
     markingScheme: string | null;
     topicName?: string | null;
     subjectName?: string | null;
+    section?: { title: string; instructions: string | null } | null;
   }[],
   exam: { shuffleQuestions: boolean; shuffleOptions: boolean },
 ) => {
@@ -91,6 +95,8 @@ export const buildSnapshotRows = (
       markingScheme: q.markingScheme,
       topicName: q.topicName,
       subjectName: q.subjectName,
+      sectionTitle: q.section?.title ?? null,
+      sectionInstructions: q.section?.instructions ?? null,
       optionOrder,
     };
   });

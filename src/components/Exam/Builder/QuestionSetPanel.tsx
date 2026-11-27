@@ -5,29 +5,39 @@ import {
   ArrowDownIcon,
   ArrowUpIcon,
   EyeIcon,
+  FileUpIcon,
   Loader2Icon,
   PencilIcon,
   PlusIcon,
   SearchIcon,
   Trash2Icon,
+  Undo2Icon,
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { deleteQuestion, reorderExamQuestions } from "@/server/examActions";
+import {
+  assignQuestionSection,
+  createExamSection,
+} from "@/server/sectionActions";
+import { restoreExamQuestion } from "@/server/paperImportActions";
 import { Badge } from "@/components/shadcnui/badge";
 import { Button } from "@/components/shadcnui/button";
 import BankQuestionPicker from "./BankQuestionPicker";
 import ExamQuestionEditor from "./ExamQuestionEditor";
+import PaperImportPanel from "./PaperImportPanel";
 import QuestionPreviewDialog from "./QuestionPreviewDialog";
 import {
   DIFFICULTY_LABEL,
   QUESTION_TYPE_LABEL,
   type BuilderQuestion,
+  type BuilderSection,
 } from "./questionLabels";
 
 type QuestionSetPanelProps = {
   examId: string;
   questions: BuilderQuestion[];
+  sections?: BuilderSection[];
   readOnly?: boolean;
   onChanged: () => void;
   focusQuestionId?: string | null;
@@ -36,6 +46,7 @@ type QuestionSetPanelProps = {
 const QuestionSetPanel = ({
   examId,
   questions,
+  sections = [],
   readOnly = false,
   onChanged,
   focusQuestionId,
@@ -44,11 +55,14 @@ const QuestionSetPanel = ({
   const [typeFilter, setTypeFilter] = useState("");
   const [difficultyFilter, setDifficultyFilter] = useState("");
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   const [editorOpen, setEditorOpen] = useState(false);
   const [editing, setEditing] = useState<BuilderQuestion | null>(null);
   const [preview, setPreview] = useState<BuilderQuestion | null>(null);
   const [reordering, setReordering] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [lastRemoved, setLastRemoved] = useState<BuilderQuestion | null>(null);
+  const [newSectionTitle, setNewSectionTitle] = useState("");
 
   const totalMarks = questions.reduce((s, q) => s + q.points, 0);
 
@@ -85,15 +99,60 @@ const QuestionSetPanel = ({
   };
 
   const handleDelete = async (id: string) => {
+    const snapshot = questions.find((q) => q.id === id) ?? null;
     setDeletingId(id);
     try {
       await deleteQuestion(id);
-      toast.success("Question removed from exam");
+      setLastRemoved(snapshot);
+      toast.success("Question removed from exam", {
+        action: snapshot ?
+          {
+            label: "Undo",
+            onClick: () => void restoreLast(snapshot),
+          }
+        : undefined,
+      });
       onChanged();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed to delete");
     } finally {
       setDeletingId(null);
+    }
+  };
+
+  const restoreLast = async (snapshot: BuilderQuestion) => {
+    try {
+      await restoreExamQuestion({
+        examId,
+        question: {
+          text: snapshot.text,
+          type: snapshot.type,
+          options: snapshot.options,
+          answer: snapshot.answer,
+          points: snapshot.points,
+          difficulty: snapshot.difficulty,
+          markingScheme: snapshot.markingScheme,
+          sectionId: snapshot.sectionId,
+        },
+      });
+      setLastRemoved(null);
+      toast.success("Question restored");
+      onChanged();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to restore");
+    }
+  };
+
+  const addSection = async () => {
+    const title = newSectionTitle.trim();
+    if (!title) return;
+    try {
+      await createExamSection(examId, { title });
+      setNewSectionTitle("");
+      toast.success("Section created");
+      onChanged();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to create section");
     }
   };
 
@@ -113,7 +172,7 @@ const QuestionSetPanel = ({
               type="button"
               size="lg"
               onClick={() => setPickerOpen(true)}>
-              <PlusIcon className="size-4" /> Add questions
+              <PlusIcon className="size-4" /> Import from bank
             </Button>
             <Button
               type="button"
@@ -123,11 +182,74 @@ const QuestionSetPanel = ({
                 setEditing(null);
                 setEditorOpen(true);
               }}>
-              Create new question
+              Add manually
             </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="lg"
+              onClick={() => setImportOpen(true)}>
+              <FileUpIcon className="size-4" /> Upload CSV / JSON
+            </Button>
+            {lastRemoved ?
+              <Button
+                type="button"
+                variant="outline"
+                size="lg"
+                onClick={() => void restoreLast(lastRemoved)}>
+                <Undo2Icon className="size-4" /> Undo remove
+              </Button>
+            : null}
           </div>
         : null}
       </div>
+
+      {!readOnly ?
+        <div className="border-border bg-muted/20 grid gap-3 rounded-3xl border p-4">
+          <div className="grid gap-1">
+            <h3 className="text-sm font-medium">Sections</h3>
+            <p className="text-muted-foreground text-xs">
+              Group questions (e.g. MCQs, Short Questions, Long Questions).
+              Section marks are the sum of question points.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {sections.map((section) => {
+              const marks = questions
+                .filter((q) => q.sectionId === section.id)
+                .reduce((sum, q) => sum + q.points, 0);
+              return (
+                <Badge
+                  key={section.id}
+                  variant="secondary">
+                  {section.title} · {marks} pts
+                </Badge>
+              );
+            })}
+            {sections.length === 0 ?
+              <span className="text-muted-foreground text-sm">
+                No sections yet
+              </span>
+            : null}
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <input
+              value={newSectionTitle}
+              onChange={(e) => setNewSectionTitle(e.target.value)}
+              placeholder="New section title"
+              className="bg-card focus-visible:border-ring focus-visible:ring-ring/30 h-11 min-w-[12rem] flex-1 rounded-md border border-input px-3 text-sm outline-none focus-visible:ring-3"
+              aria-label="New section title"
+            />
+            <Button
+              type="button"
+              variant="outline"
+              size="lg"
+              onClick={() => void addSection()}>
+              Add section
+            </Button>
+          </div>
+        </div>
+      : null}
 
       {questions.length === 0 ?
         <div className="border-border bg-muted/20 grid place-items-center gap-4 rounded-3xl border border-dashed px-6 py-14 text-center">
@@ -295,6 +417,45 @@ const QuestionSetPanel = ({
                       : null}
                     </div>
                   </div>
+                  {!readOnly && sections.length > 0 ?
+                    <label className="grid gap-1 text-sm">
+                      <span className="text-muted-foreground text-xs">
+                        Section
+                      </span>
+                      <select
+                        className="bg-card h-11 rounded-md border border-input px-3 text-sm"
+                        value={q.sectionId ?? ""}
+                        aria-label={`Section for question ${index + 1}`}
+                        onChange={(e) => {
+                          void assignQuestionSection(
+                            q.id,
+                            e.target.value || null,
+                          )
+                            .then(() => {
+                              toast.success("Section updated");
+                              onChanged();
+                            })
+                            .catch((err) =>
+                              toast.error(
+                                err instanceof Error ?
+                                  err.message
+                                : "Failed to move question",
+                              ),
+                            );
+                        }}>
+                        <option value="">Unsectioned</option>
+                        {sections.map((section) => (
+                          <option
+                            key={section.id}
+                            value={section.id}>
+                            {section.title}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  : q.section ?
+                    <Badge variant="outline">{q.section.title}</Badge>
+                  : null}
                 </article>
               );
             })}
@@ -312,6 +473,12 @@ const QuestionSetPanel = ({
         onOpenChange={setPickerOpen}
         examId={examId}
         existingTexts={questions.map((q) => q.text)}
+        onImported={onChanged}
+      />
+      <PaperImportPanel
+        open={importOpen}
+        onOpenChange={setImportOpen}
+        examId={examId}
         onImported={onChanged}
       />
       <ExamQuestionEditor

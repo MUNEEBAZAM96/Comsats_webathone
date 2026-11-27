@@ -124,6 +124,7 @@ model Exam {
   updatedAt            DateTime  @updatedAt
 
   questions     Question[]
+  sections      ExamSection[]
   assignments   ExamAssignment[]
   proctors      ExamProctor[]
   attempts      ExamAttempt[]
@@ -134,6 +135,22 @@ model Exam {
 
   @@index([createdById])
   @@map("exam")
+}
+
+/// Optional paper section (MCQs, Short Questions, …) for draft organization.
+model ExamSection {
+  id           String   @id @default(uuid())
+  examId       String
+  exam         Exam     @relation(fields: [examId], references: [id], onDelete: Cascade)
+  title        String
+  instructions String?
+  order        Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  questions    Question[]
+
+  @@index([examId])
+  @@map("exam_section")
 }
 
 model ExamAssignment {
@@ -238,6 +255,8 @@ model Question {
   markingScheme String?
   topicName     String?
   subjectName   String?
+  sectionId     String?
+  section       ExamSection? @relation(fields: [sectionId], references: [id], onDelete: SetNull)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
@@ -245,6 +264,7 @@ model Question {
   attemptQuestions AttemptQuestion[]
 
   @@index([examId])
+  @@index([sectionId])
   @@map("question")
 }
 
@@ -304,11 +324,14 @@ model AttemptQuestion {
   order            Int         @default(0)
   difficulty       String      @default("medium")
   markingScheme    String?
-  topicName        String?
-  subjectName      String?
+  topicName             String?
+  subjectName           String?
+  /// Frozen section label at attempt start (null = unsectioned)
+  sectionTitle          String?
+  sectionInstructions   String?
   /// Display order of options when shuffleOptions is on (newline-separated texts)
-  optionOrder      String?
-  createdAt        DateTime    @default(now())
+  optionOrder           String?
+  createdAt             DateTime    @default(now())
 
   answers Answer[]
 

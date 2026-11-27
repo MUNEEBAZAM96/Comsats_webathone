@@ -101,7 +101,15 @@ export const getExamById = async (id: string) => {
     exam = await prisma.exam.findUnique({
       where: { id },
       include: {
-        questions: { orderBy: { order: "asc" } },
+        questions: {
+          orderBy: { order: "asc" },
+          include: {
+            section: {
+              select: { id: true, title: true, instructions: true, order: true },
+            },
+          },
+        },
+        sections: { orderBy: { order: "asc" } },
         createdBy: { select: { name: true } },
       },
     });

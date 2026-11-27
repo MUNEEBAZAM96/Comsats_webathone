@@ -113,7 +113,9 @@ const ExamForm = ({
       onSaveStateChange?.("saved");
       onSaved?.();
       if (result && "id" in result) {
-        router.push(`${result.basePath}/exams/${result.id}` as Route);
+        router.push(
+          `${result.basePath}/exams/${result.id}/builder` as Route,
+        );
         return;
       }
       if (thenContinue) onContinue?.();

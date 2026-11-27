@@ -128,7 +128,7 @@ const ExamsTable = ({ exams, basePath }: ExamsTableProps) => {
               </td>
               <td className="px-4 py-3">
                 <div className="flex items-center justify-end gap-2">
-                  <Link href={`${basePath}/exams/${exam.id}` as Route}>
+                  <Link href={`${basePath}/exams/${exam.id}/builder` as Route}>
                     <Button
                       variant="outline"
                       size="icon-lg">
@@ -163,7 +163,7 @@ const ExamsTable = ({ exams, basePath }: ExamsTableProps) => {
                   )}
                   {exam.status === "draft" && (
                     <>
-                      <Link href={`${basePath}/exams/${exam.id}` as Route}>
+                      <Link href={`${basePath}/exams/${exam.id}/builder` as Route}>
                         <Button
                           variant="outline"
                           size="icon-lg">

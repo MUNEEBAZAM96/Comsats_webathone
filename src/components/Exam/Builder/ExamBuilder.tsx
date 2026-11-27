@@ -8,6 +8,7 @@ import {
   ArrowLeftIcon,
   BarChart3Icon,
   CheckCircle2Icon,
+  ClipboardCheckIcon,
   EyeIcon,
   Loader2Icon,
   RocketIcon,
@@ -26,6 +27,7 @@ import QuestionSetPanel from "./QuestionSetPanel";
 import {
   BUILDER_STEPS,
   type BuilderQuestion,
+  type BuilderSection,
   type BuilderStep,
 } from "./questionLabels";
 
@@ -45,6 +47,7 @@ export type ExamBuilderExam = {
   passMarkPercent: number | null;
   createdBy?: { name: string } | null;
   questions: BuilderQuestion[];
+  sections?: BuilderSection[];
 };
 
 type ExamBuilderProps = {
@@ -69,6 +72,7 @@ const ExamBuilder = ({ exam, basePath }: ExamBuilderProps) => {
   >("idle");
   const [focusQuestionId, setFocusQuestionId] = useState<string | null>(null);
   const [publishing, startPublish] = useTransition();
+  const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
   const readOnly = exam.status !== "draft";
 
   const formDefaults: Partial<ExamFormType> = {
@@ -99,6 +103,16 @@ const ExamBuilder = ({ exam, basePath }: ExamBuilderProps) => {
 
   const refresh = () => router.refresh();
 
+  const handleValidate = () => {
+    if (readiness.ready) {
+      toast.success("Publish checklist passed");
+      setStep("review");
+      return;
+    }
+    toast.error(readiness.issues[0]?.message ?? "Fix checklist items");
+    setStep(readiness.issues[0]?.step ?? "review");
+  };
+
   const handlePublish = () => {
     if (!readiness.ready) {
       toast.error(readiness.issues[0]?.message ?? "Exam is not ready to publish");
@@ -118,8 +132,8 @@ const ExamBuilder = ({ exam, basePath }: ExamBuilderProps) => {
 
   return (
     <section className="grid gap-6 pb-28 lg:pb-8">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div className="flex items-start gap-3">
+      <div className="border-border bg-background/95 sticky top-0 z-20 -mx-1 flex flex-wrap items-center justify-between gap-3 rounded-3xl border px-4 py-3 backdrop-blur">
+        <div className="flex min-w-0 items-center gap-3">
           <Link href={`${basePath}/exams` as Route}>
             <Button
               variant="outline"
@@ -128,34 +142,58 @@ const ExamBuilder = ({ exam, basePath }: ExamBuilderProps) => {
               <ArrowLeftIcon className="size-4" />
             </Button>
           </Link>
-          <div className="grid gap-1">
+          <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
-              <h1 className="text-2xl font-medium wrap-anywhere">{exam.title}</h1>
+              <h1 className="truncate text-lg font-medium sm:text-xl">
+                {exam.title}
+              </h1>
               <Badge variant={exam.status === "draft" ? "secondary" : "default"}>
                 {exam.status}
               </Badge>
             </div>
-            <p className="text-muted-foreground text-sm">
-              {exam.status === "draft" ?
-                "Exam builder — save anytime, publish when ready."
-              : "This exam is locked for authoring."}
-              {exam.createdBy?.name ? ` · Created by ${exam.createdBy.name}` : ""}
+            <p className="text-muted-foreground text-xs sm:text-sm">
+              {saveState === "saving" ?
+                "Saving…"
+              : saveState === "saved" || lastSavedAt ?
+                `Saved${lastSavedAt ? ` · ${format(lastSavedAt, "HH:mm:ss")}` : ""}`
+              : saveState === "error" ?
+                "Save failed"
+              : "Draft autosave via Save on each step"}
             </p>
           </div>
         </div>
         <div className="flex flex-wrap gap-2">
+          <Link href={`${basePath}/exams/${exam.id}/preview` as Route}>
+            <Button
+              variant="outline"
+              size="lg">
+              <EyeIcon className="size-4" /> Preview
+            </Button>
+          </Link>
+          <Button
+            type="button"
+            variant="outline"
+            size="lg"
+            onClick={handleValidate}>
+            <ClipboardCheckIcon className="size-4" /> Validate
+          </Button>
+          {!readOnly ?
+            <Button
+              type="button"
+              size="lg"
+              disabled={!readiness.ready || publishing}
+              onClick={handlePublish}>
+              {publishing ?
+                <Loader2Icon className="size-4 animate-spin" />
+              : <RocketIcon className="size-4" />}
+              Publish
+            </Button>
+          : null}
           <Link href={`${basePath}/exams/${exam.id}/assign` as Route}>
             <Button
               variant="outline"
               size="lg">
-              <UsersIcon className="size-4" /> Assign students
-            </Button>
-          </Link>
-          <Link href={`${basePath}/exams/${exam.id}/assign-proctor` as Route}>
-            <Button
-              variant="outline"
-              size="lg">
-              <EyeIcon className="size-4" /> Assign proctors
+              <UsersIcon className="size-4" /> Assign
             </Button>
           </Link>
           <Link href={`${basePath}/exams/${exam.id}/results` as Route}>
@@ -204,7 +242,10 @@ const ExamBuilder = ({ exam, basePath }: ExamBuilderProps) => {
               submitLabel="Save draft"
               continueLabel="Save and continue"
               onContinue={() => setStep("questions")}
-              onSaved={refresh}
+              onSaved={() => {
+                setLastSavedAt(new Date());
+                refresh();
+              }}
               onSaveStateChange={setSaveState}
               readOnly={readOnly}
             />
@@ -214,6 +255,7 @@ const ExamBuilder = ({ exam, basePath }: ExamBuilderProps) => {
             <QuestionSetPanel
               examId={exam.id}
               questions={exam.questions}
+              sections={exam.sections ?? []}
               readOnly={readOnly}
               onChanged={refresh}
               focusQuestionId={focusQuestionId}
@@ -221,18 +263,29 @@ const ExamBuilder = ({ exam, basePath }: ExamBuilderProps) => {
           : null}
 
           {step === "settings" ?
-            <ExamForm
-              key={`${exam.id}-settings-${String(exam.startTime)}-${String(exam.endTime)}`}
-              action={updateExam.bind(null, exam.id)}
-              defaultValues={formDefaults}
-              sections={["settings"]}
-              submitLabel="Save settings"
-              continueLabel="Save and continue"
-              onContinue={() => setStep("review")}
-              onSaved={refresh}
-              onSaveStateChange={setSaveState}
-              readOnly={readOnly}
-            />
+            <div className="grid gap-4">
+              <p className="text-muted-foreground text-sm">
+                Only settings backed by the live exam engine are shown:
+                schedule, shuffle, pass mark, and result reveal. Auto-submit at
+                expiry and the student scratchpad are always available in the
+                attempt workspace.
+              </p>
+              <ExamForm
+                key={`${exam.id}-settings-${String(exam.startTime)}-${String(exam.endTime)}`}
+                action={updateExam.bind(null, exam.id)}
+                defaultValues={formDefaults}
+                sections={["settings"]}
+                submitLabel="Save settings"
+                continueLabel="Save and continue"
+                onContinue={() => setStep("review")}
+                onSaved={() => {
+                  setLastSavedAt(new Date());
+                  refresh();
+                }}
+                onSaveStateChange={setSaveState}
+                readOnly={readOnly}
+              />
+            </div>
           : null}
 
           {step === "review" ?

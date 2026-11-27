@@ -36,8 +36,10 @@ export const getPageTitle = (pathname: string, groups: NavGroup[]) => {
     if (action === "results") return "Exam Results";
     if (action === "monitor") return "Monitor Exam";
     if (action === "grading") return "Grading";
+    if (action === "builder") return "Exam Builder";
+    if (action === "preview") return "Exam Preview";
     if (role === "student") return "Take Exam";
-    return role === "proctor" ? "Monitor Exam" : "Exam Details";
+    return role === "proctor" ? "Monitor Exam" : "Exam Builder";
   }
 
   if (section === "questions" && id) {
