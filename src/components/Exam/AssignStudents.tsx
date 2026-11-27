@@ -2,7 +2,7 @@
 
 import { Loader2Icon, PlusIcon, Trash2Icon, XIcon } from "lucide-react";
 import { useState } from "react";
-import { toast } from "react-toastify";
+import { toast } from "sonner";
 import { assignExam, unassignExam } from "@/server/assignmentActions";
 import { Button } from "../shadcnui/button";
 

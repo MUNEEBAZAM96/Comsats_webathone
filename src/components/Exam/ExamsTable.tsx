@@ -5,7 +5,7 @@ import Link from "next/link";
 import type { Route } from "next";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { toast } from "react-toastify";
+import { toast } from "sonner";
 import { deleteExam, publishExam } from "@/server/examActions";
 import { Button } from "../shadcnui/button";
 import {
@@ -98,9 +98,7 @@ const ExamsTable = ({ exams, basePath }: ExamsTableProps) => {
                 <span
                   className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
                     exam.status === "published" ?
-                      "bg-green-500/10 text-green-600 dark:text-green-400"
-                    : exam.status === "draft" ?
-                      "bg-yellow-500/10 text-yellow-600 dark:text-yellow-400"
+                      "bg-info-surface text-info"
                     : "bg-muted text-muted-foreground"
                   }`}>
                   {exam.status}

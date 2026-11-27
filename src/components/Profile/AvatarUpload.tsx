@@ -7,7 +7,7 @@ import {
   FileTypeValidator,
 } from "use-file-picker/validators";
 import { useState } from "react";
-import { toast } from "react-toastify";
+import { toast } from "sonner";
 import { authClient } from "@/lib/auth-client";
 import {
   Avatar,

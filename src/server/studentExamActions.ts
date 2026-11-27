@@ -128,7 +128,7 @@ export const getAttemptQuestions = async (attemptId: string) => {
     attempt = await prisma.examAttempt.findUnique({
       where: { id: attemptId },
       include: {
-        exam: { select: { title: true, duration: true, createdById: true } },
+        exam: { select: { title: true, duration: true, endTime: true } },
       },
     });
   } catch {

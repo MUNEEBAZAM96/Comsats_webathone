@@ -8,18 +8,19 @@ type StatCardProps = {
 };
 
 const StatCard = ({ icon, label, value }: StatCardProps) => (
-  <Card className="p-6">
-    <div className="flex items-center gap-4">
-      <div className="bg-primary/10 flex size-12 shrink-0 items-center justify-center rounded-2xl">
+  <Card className="min-w-0 gap-4 p-5">
+    <div className="flex min-w-0 items-center justify-between gap-3">
+      <p className="text-sm font-medium text-muted-foreground">{label}</p>
+      <div
+        aria-hidden="true"
+        className="grid size-10 shrink-0 place-items-center rounded-md bg-secondary text-primary [&_svg]:size-5"
+      >
         {icon}
       </div>
-      <div className="min-w-0">
-        <p className="text-muted-foreground text-xs tracking-wider uppercase">
-          {label}
-        </p>
-        <p className="text-2xl leading-none font-semibold">{value}</p>
-      </div>
     </div>
+    <p className="break-words font-heading text-3xl leading-none font-bold tracking-tight tabular-nums">
+      {value}
+    </p>
   </Card>
 );
 

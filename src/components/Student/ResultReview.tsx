@@ -84,11 +84,11 @@ export const ResultReview = ({
               key={q.id}
               className={`grid gap-3 rounded-lg border p-5 ${
                 isCorrect ?
-                  "border-emerald-200 bg-emerald-50/50 dark:border-emerald-800 dark:bg-emerald-950/20"
+                  "border-success bg-success-surface"
                 : isPartial ?
-                  "border-amber-200 bg-amber-50/50 dark:border-amber-800 dark:bg-amber-950/20"
+                  "border-warning bg-warning-surface"
                 : studentAnswer ?
-                  "border-red-200 bg-red-50/50 dark:border-red-800 dark:bg-red-950/20"
+                  "border-destructive bg-error-surface"
                 : "border-muted-foreground/20 bg-muted/30"
               }`}>
               <div className="flex items-start justify-between gap-4">
@@ -100,11 +100,11 @@ export const ResultReview = ({
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
                   {isCorrect ?
-                    <CheckCircle2Icon className="size-5 text-emerald-600" />
+                    <CheckCircle2Icon className="size-5 text-success" />
                   : isPartial ?
-                    <MinusCircleIcon className="size-5 text-amber-600" />
+                    <MinusCircleIcon className="size-5 text-warning" />
                   : studentAnswer ?
-                    <XCircleIcon className="size-5 text-red-600" />
+                    <XCircleIcon className="size-5 text-destructive" />
                   : <MinusCircleIcon className="text-muted-foreground size-5" />
                   }
                   <span className="text-muted-foreground text-sm tabular-nums">
@@ -134,9 +134,9 @@ export const ResultReview = ({
                               key={opt}
                               className={`rounded px-3 py-1.5 text-sm ${
                                 isRight ?
-                                  "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300"
+                                  "bg-success-surface text-success"
                                 : isWrong ?
-                                  "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300"
+                                  "bg-error-surface text-destructive"
                                 : "text-muted-foreground"
                               }`}>
                               {opt}
@@ -170,9 +170,9 @@ export const ResultReview = ({
                           key={opt}
                           className={`rounded px-3 py-1.5 text-sm ${
                             isRight ?
-                              "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300"
+                              "bg-success-surface text-success"
                             : isWrong ?
-                              "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300"
+                              "bg-error-surface text-destructive"
                             : "text-muted-foreground"
                           }`}>
                           {opt}
@@ -206,7 +206,7 @@ export const ResultReview = ({
                         <span className="text-muted-foreground">
                           Expected keywords:{" "}
                         </span>
-                        <span className="text-emerald-600 dark:text-emerald-400">
+                        <span className="text-success">
                           {correctAnswer}
                         </span>
                       </div>

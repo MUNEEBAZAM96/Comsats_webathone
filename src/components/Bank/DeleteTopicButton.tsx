@@ -3,7 +3,7 @@
 import { Loader2Icon, Trash2Icon } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { toast } from "react-toastify";
+import { toast } from "sonner";
 import { deleteTopic } from "@/server/bankActions";
 import { Button } from "../shadcnui/button";
 import {

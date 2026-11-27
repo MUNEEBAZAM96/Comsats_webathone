@@ -2,15 +2,13 @@ import {
   DashboardShellSkeleton,
   DashboardSkeleton,
 } from "@/components/Dashboard/DashboardShellSkeleton";
+import { QuietReveal } from "@/components/Providers/QuietReveal";
+import { DashboardIntro } from "@/components/Dashboard/DashboardIntro";
+import { StatusBadge } from "@/components/Results/StatusBadge";
 import { StatCard } from "@/components/Dashboard/StatCard";
 import { Badge } from "@/components/shadcnui/badge";
-import { Button } from "@/components/shadcnui/button";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/shadcnui/card";
+import { DashboardLink } from "@/components/Dashboard/DashboardLink";
+import { Card, CardContent, CardHeader } from "@/components/shadcnui/card";
 import prisma from "@/lib/database/dbClient";
 import { requireRole } from "@/server/session";
 import { format } from "date-fns";
@@ -18,7 +16,8 @@ import {
   BookOpenIcon,
   FileTextIcon,
   GraduationCapIcon,
-  LayoutDashboardIcon,
+  ArrowUpRightIcon,
+  ChartNoAxesColumnIcon,
   PlusIcon,
   UsersIcon,
 } from "lucide-react";
@@ -33,7 +32,7 @@ export const metadata: Metadata = {
 };
 
 const AdminDashboard = () => (
-  <section className="grid gap-8">
+  <section className="grid gap-6">
     <Suspense fallback={<DashboardShellSkeleton />}>
       <AdminDashboardContent />
     </Suspense>
@@ -43,74 +42,65 @@ const AdminDashboard = () => (
 const AdminDashboardContent = async () => {
   // The admin layout redirects other roles but does not stop this page from
   // rendering, so the page checks the role before any stats are loaded.
-  const session = await requireRole("admin");
+  await requireRole("admin");
 
   return (
     <>
-      <div>
-        <h1 className="text-2xl font-medium">Admin Dashboard</h1>
-        <p className="text-muted-foreground">
-          Welcome back, {session?.user.name}
-        </p>
-      </div>
+      <QuietReveal>
+        <DashboardIntro
+          title="Admin overview"
+          action={
+            <DashboardLink href="/admin/exams/new">
+              <PlusIcon aria-hidden="true" /> Create Exam
+            </DashboardLink>
+          }>
+          Manage exams and review platform activity.
+        </DashboardIntro>
+      </QuietReveal>
 
       <Suspense fallback={<DashboardSkeleton />}>
         <AdminDashboardStats />
       </Suspense>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Quick Actions</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <section
+        className="grid gap-4"
+        aria-labelledby="admin-quick-actions">
+        <h2
+          id="admin-quick-actions"
+          className="text-lg font-semibold">
+          Quick actions
+        </h2>
+        <div className="grid gap-3 sm:grid-cols-3">
+          {[
+            { href: "/admin/users", title: "Manage users", icon: UsersIcon },
+            {
+              href: "/admin/questions",
+              title: "Question bank",
+              icon: BookOpenIcon,
+            },
+            {
+              href: "/admin/results",
+              title: "View results",
+              icon: ChartNoAxesColumnIcon,
+            },
+          ].map(({ href, title, icon: Icon }) => (
             <Link
-              href="/admin/users"
-              as={"/admin/users" as Route}>
-              <Button
-                variant="outline"
-                size="lg"
-                className="w-full justify-start">
-                <UsersIcon className="size-4" />
-                Manage Users
-              </Button>
+              key={href}
+              href={href as Route}
+              className="flex items-center gap-3 rounded-lg border bg-card p-4 text-sm font-semibold transition-colors hover:border-input hover:bg-secondary focus-visible:outline-2">
+              <Icon
+                aria-hidden="true"
+                className="size-5 shrink-0 text-primary"
+              />
+              <span className="min-w-0 flex-1">{title}</span>
+              <ArrowUpRightIcon
+                aria-hidden="true"
+                className="size-4 shrink-0 text-muted-foreground"
+              />
             </Link>
-            <Link
-              href="/admin/exams/new"
-              as={"/admin/exams/new" as Route}>
-              <Button
-                variant="outline"
-                size="lg"
-                className="w-full justify-start">
-                <PlusIcon className="size-4" />
-                Create Exam
-              </Button>
-            </Link>
-            <Link
-              href="/admin/questions"
-              as={"/admin/questions" as Route}>
-              <Button
-                variant="outline"
-                size="lg"
-                className="w-full justify-start">
-                <BookOpenIcon className="size-4" />
-                Question Bank
-              </Button>
-            </Link>
-            <Link
-              href="/admin/results"
-              as={"/admin/results" as Route}>
-              <Button
-                variant="outline"
-                size="lg"
-                className="w-full justify-start">
-                <LayoutDashboardIcon className="size-4" />
-                View Results
-              </Button>
-            </Link>
-          </div>
-        </CardContent>
-      </Card>
+          ))}
+        </div>
+      </section>
     </>
   );
 };
@@ -141,9 +131,6 @@ const AdminDashboardStats = async () => {
         status: true,
         createdAt: true,
         createdBy: { select: { name: true } },
-        _count: {
-          select: { questions: true, assignments: true, attempts: true },
-        },
       },
     }),
     prisma.examAttempt.findMany({
@@ -169,167 +156,189 @@ const AdminDashboardStats = async () => {
   const totalAttempts = attemptCounts.reduce((sum, g) => sum + g._count, 0);
   const inProgressAttempts =
     attemptCounts.find((g) => g.status === "in_progress")?._count ?? 0;
-  const completedAttempts =
-    attemptCounts.find((g) => g.status === "submitted")?._count ?? 0;
+  const completedAttempts = attemptCounts
+    .filter(({ status }) => status === "submitted" || status === "graded")
+    .reduce((sum, { _count }) => sum + _count, 0);
 
   return (
     <>
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard
           icon={<UsersIcon className="text-primary size-6" />}
-          label="Total Users"
+          label="Total users"
           value={totalUsers}
         />
         <StatCard
           icon={<FileTextIcon className="text-primary size-6" />}
-          label="Total Exams"
+          label="Total examinations"
           value={totalExams}
         />
         <StatCard
           icon={<BookOpenIcon className="text-primary size-6" />}
-          label="Bank Questions"
+          label="Question bank items"
           value={questionCount}
         />
         <StatCard
           icon={<GraduationCapIcon className="text-primary size-6" />}
-          label="Total Attempts"
+          label="Total attempts"
           value={totalAttempts}
         />
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle>User Distribution</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid gap-2">
-              {userCounts.map((g) => (
-                <div
-                  key={g.role}
-                  className="flex items-center justify-between">
-                  <span className="text-muted-foreground text-sm capitalize">
-                    {g.role}
-                  </span>
-                  <span className="font-medium">{g._count}</span>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Exam Overview</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid gap-2">
-              <div className="flex items-center justify-between">
-                <span className="text-muted-foreground text-sm">Published</span>
-                <span className="font-medium">{publishedExams}</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-muted-foreground text-sm">Draft</span>
-                <span className="font-medium">{draftExams}</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-muted-foreground text-sm">
-                  In Progress
-                </span>
-                <span className="font-medium">{inProgressAttempts}</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-muted-foreground text-sm">Completed</span>
-                <span className="font-medium">{completedAttempts}</span>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      <div className="grid gap-4 sm:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle>Recent Exams</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {recentExams.length === 0 ?
-              <p className="text-muted-foreground py-4 text-center text-sm">
-                No exams created yet.
-              </p>
-            : <div className="grid gap-2">
-                {recentExams.map((exam) => (
-                  <div
-                    key={exam.id}
-                    className="border-border flex items-center justify-between gap-2 border-b pb-2 last:border-0 last:pb-0">
-                    <div className="min-w-0">
-                      <Link
-                        href={`/admin/exams/${exam.id}` as Route}
-                        className="hover:text-primary text-sm font-medium transition-colors">
-                        {exam.title}
-                      </Link>
-                      <p className="text-muted-foreground text-xs">
-                        {exam.createdBy.name} &middot;{" "}
-                        {format(exam.createdAt, "MMM d, yyyy")}
-                      </p>
-                    </div>
-                    <Badge
-                      variant={
-                        exam.status === "published" ? "default" : "secondary"
-                      }>
-                      {exam.status}
-                    </Badge>
-                  </div>
-                ))}
-              </div>
-            }
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Recent Attempts</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {recentAttempts.length === 0 ?
-              <p className="text-muted-foreground py-4 text-center text-sm">
-                No attempts yet.
-              </p>
-            : <div className="grid gap-2">
-                {recentAttempts.map((attempt) => (
-                  <div
-                    key={attempt.id}
-                    className="border-border flex items-center justify-between gap-2 border-b pb-2 last:border-0 last:pb-0">
-                    <div className="min-w-0">
-                      <p className="text-sm font-medium">{attempt.user.name}</p>
-                      <p className="text-muted-foreground text-xs">
-                        {attempt.exam.title}
-                        {attempt.submittedAt &&
-                          ` · ${format(attempt.submittedAt, "MMM d, yyyy")}`}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      {attempt.status === "submitted" &&
-                        attempt.autoScore !== null && (
-                          <span className="text-xs font-medium">
-                            {attempt.autoScore}/{attempt.maxScore}
-                          </span>
-                        )}
+      <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+        <div className="grid min-w-0 gap-4">
+          <Card>
+            <CardHeader>
+              <h2 className="font-heading text-base font-semibold">
+                Recent exams
+              </h2>
+            </CardHeader>
+            <CardContent>
+              {recentExams.length === 0 ? (
+                <p className="text-muted-foreground py-4 text-center text-sm">
+                  No exams created yet.
+                </p>
+              ) : (
+                <div className="grid gap-2">
+                  {recentExams.map((exam) => (
+                    <div
+                      key={exam.id}
+                      className="border-border flex items-center justify-between gap-2 border-b pb-2 last:border-0 last:pb-0">
+                      <div className="min-w-0">
+                        <Link
+                          href={`/admin/exams/${exam.id}` as Route}
+                          className="break-words text-sm font-medium underline-offset-4 hover:underline">
+                          {exam.title}
+                        </Link>
+                        <p className="break-words text-xs text-muted-foreground">
+                          {exam.createdBy.name} &middot;{" "}
+                          {format(exam.createdAt, "MMM d, yyyy")}
+                        </p>
+                      </div>
                       <Badge
-                        variant={
-                          attempt.status === "submitted" ? "default" : "outline"
+                        variant="secondary"
+                        className={
+                          exam.status === "published"
+                            ? "bg-info-surface text-info"
+                            : undefined
                         }>
-                        {attempt.status === "in_progress" ?
-                          "In Progress"
-                        : "Submitted"}
+                        {exam.status}
                       </Badge>
                     </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <h2 className="font-heading text-base font-semibold">
+                Recent attempts
+              </h2>
+            </CardHeader>
+            <CardContent>
+              {recentAttempts.length === 0 ? (
+                <p className="text-muted-foreground py-4 text-center text-sm">
+                  No attempts yet.
+                </p>
+              ) : (
+                <div className="grid gap-2">
+                  {recentAttempts.map((attempt) => (
+                    <div
+                      key={attempt.id}
+                      className="border-border flex items-center justify-between gap-2 border-b pb-2 last:border-0 last:pb-0">
+                      <div className="min-w-0">
+                        {attempt.status === "in_progress" ? (
+                          <p className="break-words text-sm font-medium">
+                            {attempt.user.name}
+                          </p>
+                        ) : (
+                          <Link
+                            className="break-words text-sm font-medium underline-offset-4 hover:underline"
+                            href={`/admin/results/${attempt.id}`}>
+                            {attempt.user.name}
+                          </Link>
+                        )}
+                        <p className="break-words text-xs text-muted-foreground">
+                          {attempt.exam.title}
+                          {attempt.submittedAt &&
+                            ` · ${format(attempt.submittedAt, "MMM d, yyyy")}`}
+                        </p>
+                      </div>
+                      <div className="flex shrink-0 flex-wrap items-center gap-2">
+                        {attempt.status !== "in_progress" &&
+                          attempt.autoScore !== null && (
+                            <span className="text-xs font-medium">
+                              {attempt.autoScore}/{attempt.maxScore}
+                            </span>
+                          )}
+                        <StatusBadge status={attempt.status} />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+        <div className="grid min-w-0 gap-4 sm:grid-cols-2 xl:grid-cols-1">
+          <Card>
+            <CardHeader>
+              <h2 className="font-heading text-base font-semibold">
+                User distribution
+              </h2>
+            </CardHeader>
+            <CardContent>
+              <div className="grid gap-2">
+                {userCounts.map((g) => (
+                  <div
+                    key={g.role}
+                    className="flex items-center justify-between">
+                    <span className="text-muted-foreground text-sm capitalize">
+                      {g.role}
+                    </span>
+                    <span className="font-medium">{g._count}</span>
                   </div>
                 ))}
               </div>
-            }
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <h2 className="font-heading text-base font-semibold">
+                Exam and attempt status
+              </h2>
+            </CardHeader>
+            <CardContent>
+              <div className="grid gap-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground text-sm">
+                    Published
+                  </span>
+                  <span className="font-medium">{publishedExams}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground text-sm">Draft</span>
+                  <span className="font-medium">{draftExams}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground text-sm">
+                    Attempts in progress
+                  </span>
+                  <span className="font-medium">{inProgressAttempts}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground text-sm">
+                    Completed attempts
+                  </span>
+                  <span className="font-medium">{completedAttempts}</span>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
       </div>
     </>
   );

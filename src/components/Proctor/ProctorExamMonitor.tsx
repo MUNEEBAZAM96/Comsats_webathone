@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ClockIcon, UsersIcon } from "lucide-react";
-import { toast } from "react-toastify";
+import { toast } from "sonner";
 import { Badge } from "@/components/shadcnui/badge";
 import { Card } from "@/components/shadcnui/card";
 import { getExamProgress } from "@/server/proctorActions";
@@ -18,9 +18,9 @@ interface ProctorExamMonitorProps {
 const statusBadge = (status: string) => {
   switch (status) {
     case "in_progress":
-      return <Badge className="bg-amber-100 text-amber-800">In Progress</Badge>;
+      return <Badge className="bg-warning-surface text-warning">In Progress</Badge>;
     case "submitted":
-      return <Badge className="bg-green-100 text-green-800">Submitted</Badge>;
+      return <Badge className="bg-success-surface text-success">Submitted</Badge>;
     default:
       return <Badge>{status}</Badge>;
   }
@@ -51,7 +51,7 @@ export const ProctorExamMonitor = ({
       }
     } catch {
       toast.error("Failed to fetch exam progress", {
-        toastId: "proctor-poll-error",
+        id: "proctor-poll-error",
       });
     }
   }, [examId]);

@@ -1,12 +1,5 @@
 import RegisterForm from "@/components/Auth/RegisterForm";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from "@/components/shadcnui/card";
+import { AuthHeading } from "@/components/Auth/AuthHeading";
 import { Metadata } from "next";
 import Link from "next/link";
 
@@ -17,28 +10,21 @@ export const metadata: Metadata = {
 
 const RegisterPage = () => {
   return (
-    <section className="grid h-dvh place-items-center">
-      <Card className="w-xs sm:w-sm">
-        <CardHeader className="text-center">
-          <CardTitle className="text-xl">Create an account</CardTitle>
-          <CardDescription>Create an account to get started</CardDescription>
-        </CardHeader>
-
-        <CardContent>
-          <RegisterForm />
-        </CardContent>
-
-        <CardFooter className="justify-center">
-          <div className="flex justify-center gap-1">
-            Already have an account?
-            <Link
-              href="/"
-              className="hover:underline">
-              Sign in
-            </Link>
-          </div>
-        </CardFooter>
-      </Card>
+    <section className="grid gap-8">
+      <AuthHeading
+        title="Create an account"
+        description="Set up your candidate account."
+      />
+      <RegisterForm />
+      <p className="border-t pt-6 text-center text-sm text-muted-foreground">
+        Already have an account?{" "}
+        <Link
+          href="/"
+          className="font-semibold text-primary underline-offset-4 hover:underline"
+        >
+          Sign in
+        </Link>
+      </p>
     </section>
   );
 };

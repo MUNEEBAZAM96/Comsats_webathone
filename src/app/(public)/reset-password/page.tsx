@@ -1,12 +1,5 @@
 import ResetPasswordForm from "@/components/Auth/ResetPasswordForm";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from "@/components/shadcnui/card";
+import { AuthHeading } from "@/components/Auth/AuthHeading";
 import { Metadata } from "next";
 import Link from "next/link";
 import { Suspense } from "react";
@@ -18,27 +11,22 @@ export const metadata: Metadata = {
 
 const ResetPasswordPage = () => {
   return (
-    <section className="grid h-dvh place-items-center">
-      <Card className="w-xs sm:w-sm">
-        <CardHeader className="text-center">
-          <CardTitle className="text-xl">Reset password</CardTitle>
-          <CardDescription>Enter your new password</CardDescription>
-        </CardHeader>
-
-        <CardContent>
-          <Suspense fallback={null}>
-            <ResetPasswordForm />
-          </Suspense>
-        </CardContent>
-
-        <CardFooter className="justify-center">
-          <Link
-            href="/"
-            className="text-muted-foreground text-xs hover:underline">
-            Back to sign in
-          </Link>
-        </CardFooter>
-      </Card>
+    <section className="grid gap-8">
+      <AuthHeading
+        title="Reset password"
+        description="Choose a new password for your account."
+      />
+      <Suspense fallback={null}>
+        <ResetPasswordForm />
+      </Suspense>
+      <p className="border-t pt-6 text-center text-sm text-muted-foreground">
+        <Link
+          href="/"
+          className="font-semibold text-primary underline-offset-4 hover:underline"
+        >
+          Back to sign in
+        </Link>
+      </p>
     </section>
   );
 };

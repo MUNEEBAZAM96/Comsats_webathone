@@ -1,9 +1,10 @@
+import type { Route } from "next";
+
 export type NavItem = {
   title: string;
-  url: string;
-  icon: string;
+  url: Route;
+  icon: "LayoutDashboard" | "FileText" | "Users" | "BarChart3" | "BookOpen";
   exact?: boolean;
-  notActiveFor?: string[];
 };
 
 export type NavGroup = {
@@ -11,61 +12,61 @@ export type NavGroup = {
   items: NavItem[];
 };
 
-function matchesNotActiveFor(pattern: string, path: string): boolean {
-  if (!pattern.includes("[id]")) return pattern === path;
-  const regex = new RegExp("^" + pattern.replace(/\[id\]/g, "[^/]+") + "$");
-  return regex.test(path);
-}
+const overview = (url: Route): NavGroup => ({
+  label: "Overview",
+  items: [{ title: "Dashboard", url, icon: "LayoutDashboard", exact: true }],
+});
 
-export function findMatchingNavItem(
-  pathname: string,
-  items: NavItem[],
-): NavItem | undefined {
+export const findMatchingNavItem = (pathname: string, items: NavItem[]) => {
   const normalized = pathname.replace(/\/$/, "") || "/";
-  for (const item of items) {
-    if (item.notActiveFor?.some((n) => matchesNotActiveFor(n, normalized)))
-      continue;
-    if (normalized === item.url) return item;
-    if (item.exact) continue;
-    if (normalized.startsWith(item.url + "/")) return item;
+  return items.find(
+    ({ url, exact }) =>
+      normalized === url || (!exact && normalized.startsWith(url + "/")),
+  );
+};
+
+export const getPageTitle = (pathname: string, groups: NavGroup[]) => {
+  const [, role, section, id, action] = pathname.replace(/\/$/, "").split("/");
+  if (role === "settings") return "Settings";
+
+  if (section === "exams" && id) {
+    if (id === "new") return "Create Exam";
+    if (action === "assign") return "Assign Exam";
+    if (action === "assign-proctor") return "Assign Proctors";
+    if (action === "results") return "Exam Results";
+    return role === "proctor" ? "Monitor Exam" : "Exam Details";
   }
-  return undefined;
-}
+
+  if (section === "questions" && id) {
+    if (id === "new" || pathname.replace(/\/$/, "").endsWith("/new"))
+      return "New Question";
+    if (id === "subjects") return "Topics";
+    if (id === "topics") return "Questions";
+    return "Edit Question";
+  }
+
+  if (section === "results" && id) return "Result Details";
+
+  return (
+    findMatchingNavItem(
+      pathname,
+      groups.flatMap(({ items }) => items),
+    )?.title ?? "Dashboard"
+  );
+};
 
 export const adminNav: NavGroup[] = [
+  overview("/admin"),
   {
-    label: "Overview",
+    label: "Assessments",
     items: [
-      {
-        title: "Dashboard",
-        url: "/admin",
-        icon: "LayoutDashboard",
-        exact: true,
-      },
-    ],
-  },
-  {
-    label: "Exams",
-    items: [
-      {
-        title: "All Exams",
-        url: "/admin/exams",
-        icon: "FileText",
-        notActiveFor: ["/admin/exams/new", "/admin/exams/[id]"],
-      },
-      { title: "Create Exam", url: "/admin/exams/new", icon: "PlusCircle" },
-      {
-        title: "Question Bank",
-        url: "/admin/questions",
-        icon: "BookOpen",
-      },
+      { title: "Exams", url: "/admin/exams", icon: "FileText" },
+      { title: "Question Bank", url: "/admin/questions", icon: "BookOpen" },
     ],
   },
   {
     label: "People",
-    items: [
-      { title: "Users", url: "/admin/users", icon: "Users", exact: true },
-    ],
+    items: [{ title: "Users", url: "/admin/users", icon: "Users" }],
   },
   {
     label: "Reports",
@@ -74,27 +75,11 @@ export const adminNav: NavGroup[] = [
 ];
 
 export const examinerNav: NavGroup[] = [
+  overview("/examiner"),
   {
-    label: "Overview",
+    label: "Assessments",
     items: [
-      {
-        title: "Dashboard",
-        url: "/examiner",
-        icon: "LayoutDashboard",
-        exact: true,
-      },
-    ],
-  },
-  {
-    label: "Exams",
-    items: [
-      {
-        title: "All Exams",
-        url: "/examiner/exams",
-        icon: "FileText",
-        notActiveFor: ["/examiner/exams/new", "/examiner/exams/[id]"],
-      },
-      { title: "Create Exam", url: "/examiner/exams/new", icon: "PlusCircle" },
+      { title: "My Exams", url: "/examiner/exams", icon: "FileText" },
       { title: "Question Bank", url: "/examiner/questions", icon: "BookOpen" },
     ],
   },
@@ -105,20 +90,12 @@ export const examinerNav: NavGroup[] = [
 ];
 
 export const proctorNav: NavGroup[] = [
+  overview("/proctor"),
   {
-    label: "Overview",
+    label: "Assessments",
     items: [
-      {
-        title: "Dashboard",
-        url: "/proctor",
-        icon: "LayoutDashboard",
-        exact: true,
-      },
+      { title: "Assigned Exams", url: "/proctor/exams", icon: "FileText" },
     ],
-  },
-  {
-    label: "Exams",
-    items: [{ title: "All Exams", url: "/proctor/exams", icon: "FileText" }],
   },
   {
     label: "Reports",
@@ -127,23 +104,15 @@ export const proctorNav: NavGroup[] = [
 ];
 
 export const studentNav: NavGroup[] = [
+  overview("/student"),
   {
-    label: "Overview",
-    items: [
-      {
-        title: "Dashboard",
-        url: "/student",
-        icon: "LayoutDashboard",
-        exact: true,
-      },
-    ],
-  },
-  {
-    label: "Exams",
+    label: "Assessments",
     items: [{ title: "My Exams", url: "/student/exams", icon: "FileText" }],
   },
   {
     label: "Reports",
-    items: [{ title: "Results", url: "/student/results", icon: "BarChart3" }],
+    items: [
+      { title: "My Results", url: "/student/results", icon: "BarChart3" },
+    ],
   },
 ];

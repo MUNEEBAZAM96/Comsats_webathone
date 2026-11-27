@@ -1,6 +1,5 @@
 "use client";
 
-import { Input } from "../shadcnui/input";
 import { Textarea } from "../shadcnui/textarea";
 import { Label } from "../shadcnui/label";
 
@@ -21,8 +20,9 @@ export const QuestionCard = ({
   value,
   onChange,
 }: QuestionCardProps) => {
-  const options =
-    question.options ? question.options.split("\n").filter(Boolean) : [];
+  const options = question.options
+    ? question.options.split("\n").filter(Boolean)
+    : [];
 
   const selectedValues = value ? value.split("\n").filter(Boolean) : [];
 
@@ -43,9 +43,10 @@ export const QuestionCard = ({
               return (
                 <Label
                   key={opt}
-                  className={`hover:bg-accent flex cursor-pointer items-center gap-3 rounded-lg border p-4 transition-colors ${
-                    checked ? "border-primary bg-primary/5" : "border-border"
-                  }`}>
+                  className={`hover:bg-accent flex cursor-pointer items-center gap-3 rounded-md border px-4 py-3 text-base leading-relaxed transition-colors ${
+                    checked ? "border-primary bg-secondary" : "border-input"
+                  }`}
+                >
                   <input
                     type="checkbox"
                     value={opt}
@@ -66,11 +67,10 @@ export const QuestionCard = ({
             {options.map((opt) => (
               <Label
                 key={opt}
-                className={`hover:bg-accent flex cursor-pointer items-center gap-3 rounded-lg border p-4 transition-colors ${
-                  value === opt ?
-                    "border-primary bg-primary/5"
-                  : "border-border"
-                }`}>
+                className={`hover:bg-accent flex cursor-pointer items-center gap-3 rounded-md border px-4 py-3 text-base leading-relaxed transition-colors ${
+                  value === opt ? "border-primary bg-secondary" : "border-input"
+                }`}
+              >
                 <input
                   type="radio"
                   name={question.id}
@@ -87,15 +87,14 @@ export const QuestionCard = ({
 
       case "true_false":
         return (
-          <div className="flex gap-4">
+          <div className="grid gap-3 sm:grid-cols-2">
             {["True", "False"].map((opt) => (
               <Label
                 key={opt}
-                className={`hover:bg-accent flex cursor-pointer items-center gap-3 rounded-lg border p-4 transition-colors ${
-                  value === opt ?
-                    "border-primary bg-primary/5"
-                  : "border-border"
-                }`}>
+                className={`hover:bg-accent flex cursor-pointer items-center gap-3 rounded-md border px-4 py-3 text-base leading-relaxed transition-colors ${
+                  value === opt ? "border-primary bg-secondary" : "border-input"
+                }`}
+              >
                 <input
                   type="radio"
                   name={question.id}
@@ -110,31 +109,26 @@ export const QuestionCard = ({
           </div>
         );
 
-      case "short_answer":
-        return (
-          <Input
-            value={value}
-            onChange={(e) => onChange(e.target.value)}
-            placeholder="Type your answer..."
-          />
-        );
-
       default:
         return (
           <Textarea
+            aria-label="Your answer"
             value={value}
             onChange={(e) => onChange(e.target.value)}
             placeholder="Type your answer..."
             rows={4}
+            className="min-h-32"
           />
         );
     }
   };
 
   return (
-    <div className="grid gap-4 rounded-lg border p-6">
-      <div className="flex items-start justify-between gap-4">
-        <p className="text-lg leading-relaxed font-medium">{question.text}</p>
+    <div className="grid gap-5">
+      <div className="flex flex-wrap items-start justify-between gap-2 sm:flex-nowrap sm:gap-4">
+        <p className="min-w-0 break-words text-lg leading-relaxed font-medium sm:text-xl">
+          {question.text}
+        </p>
         <span className="bg-muted shrink-0 rounded-full px-3 py-1 text-xs font-medium tabular-nums">
           {question.points} {question.points === 1 ? "pt" : "pts"}
         </span>
