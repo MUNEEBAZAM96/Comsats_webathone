@@ -37,7 +37,7 @@ const AvatarUpload = () => {
     multiple: false,
     validators: [
       new FileSizeValidator({ maxFileSize: 2 * 1024 * 1024 }),
-      new FileTypeValidator([".jpeg", ".jpg", ".png", ".webp"]),
+      new FileTypeValidator(["jpeg", "jpg", "png", "webp"]),
     ],
   });
 
@@ -55,19 +55,32 @@ const AvatarUpload = () => {
     try {
       const { createImage, deleteImage } = await import("@/server/imageAction");
 
-      if (currentImage) {
-        await deleteImage(currentImage);
-      }
-
       const url = await createImage(plainFiles[0]);
       const { error } = await authClient.updateUser({ image: url });
 
       if (error) {
+        try {
+          await deleteImage(url);
+        } catch {
+          toast.warning("The uploaded avatar could not be cleaned up");
+        }
         toast.error(error.message ?? "Failed to update avatar");
         return;
       }
 
+      let cleanupFailed = false;
+      if (currentImage) {
+        try {
+          await deleteImage(currentImage);
+        } catch {
+          cleanupFailed = true;
+        }
+      }
+
       toast.success("Avatar updated");
+      if (cleanupFailed) {
+        toast.warning("Your previous avatar could not be removed from Cloudinary");
+      }
       clear();
       refetch();
     } catch (e) {
@@ -82,9 +95,6 @@ const AvatarUpload = () => {
     setSaving(true);
     try {
       const { deleteImage } = await import("@/server/imageAction");
-
-      await deleteImage(currentImage);
-
       const { error } = await authClient.updateUser({ image: null });
 
       if (error) {
@@ -92,7 +102,17 @@ const AvatarUpload = () => {
         return;
       }
 
+      let cleanupFailed = false;
+      try {
+        await deleteImage(currentImage);
+      } catch {
+        cleanupFailed = true;
+      }
+
       toast.success("Avatar removed");
+      if (cleanupFailed) {
+        toast.warning("Your avatar was removed, but Cloudinary cleanup failed");
+      }
       refetch();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed to remove avatar");

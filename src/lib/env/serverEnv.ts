@@ -20,6 +20,10 @@ export const serverEnv = createEnv({
     BETTER_AUTH_TELEMETRY: z.enum(["0", "1"]).optional(),
     CHECKPOINT_DISABLE: z.enum(["1", "0"]).optional(),
     BETTER_AUTH_SEED_ADMIN_EMAIL: z.email().optional(),
+    CLOUDINARY_CLOUD_NAME: z.string().min(1).optional(),
+    CLOUDINARY_API_KEY: z.string().min(1).optional(),
+    CLOUDINARY_API_SECRET: z.string().min(1).optional(),
+    CLOUDINARY_FOLDER_MODE: z.string().min(1).optional(),
   },
   experimental__runtimeEnv: process.env,
 });

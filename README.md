@@ -146,6 +146,8 @@ Replace the placeholder before running the application. Keep the secret stable: 
 
 `BETTER_AUTH_URL` is also used when building public verification URLs for QR codes (`/verify/[reportId]`). Use the real public origin in deployed environments.
 
+Avatar uploads use Cloudinary. Configure `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, and `CLOUDINARY_API_SECRET` in `.env`, and set `CLOUDINARY_FOLDER_MODE` to `dynamic` or `fixed` to match the Cloudinary account’s folder mode. Keep the API secret private; it is only used by server-side avatar upload and deletion actions.
+
 ### 3. Initialize and seed the database
 
 ```bash
