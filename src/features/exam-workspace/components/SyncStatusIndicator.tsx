@@ -31,7 +31,8 @@ export const SyncStatusIndicator = ({
   onRetry: () => void;
 }) => {
   const [now, setNow] = useState<number | null>(null);
-  const counting = snapshot.state === "retrying" && snapshot.nextRetryAt !== null;
+  const counting =
+    snapshot.state === "retrying" && snapshot.nextRetryAt !== null;
 
   useEffect(() => {
     if (!counting) return;
@@ -40,13 +41,15 @@ export const SyncStatusIndicator = ({
   }, [counting]);
 
   const seconds =
-    counting && now !== null && snapshot.nextRetryAt !== null ?
-      Math.max(0, Math.ceil((snapshot.nextRetryAt - now) / 1000))
-    : null;
+    counting && now !== null && snapshot.nextRetryAt !== null
+      ? Math.max(0, Math.ceil((snapshot.nextRetryAt - now) / 1000))
+      : null;
   const n = snapshot.pendingCount;
 
   let icon = <CheckIcon aria-hidden="true" className="text-success size-4" />;
-  let label = "All answers saved";
+  let label = snapshot.lastSyncedAt
+    ? "Synchronized — answers saved to the server"
+    : "Online — no answers waiting to sync";
   let tone = "text-muted-foreground";
 
   switch (snapshot.state) {
@@ -55,17 +58,28 @@ export const SyncStatusIndicator = ({
       label = "Restoring saved answers…";
       break;
     case "pending":
+      label = `Pending synchronization (${plural(n)})`;
+      break;
     case "saving":
       icon = <Loader2Icon aria-hidden="true" className="size-4 animate-spin" />;
       label = "Saving…";
       break;
     case "offline":
-      icon = <CloudOffIcon aria-hidden="true" className="text-warning size-4" />;
-      label = `Offline — answers kept on this device (${plural(n)} not sent)`;
+      icon = (
+        <CloudOffIcon aria-hidden="true" className="text-warning size-4" />
+      );
+      label =
+        n === 0
+          ? "Offline"
+          : snapshot.locallyQueued
+            ? `Offline — ${plural(n)} stored on this device`
+            : `Offline — ${plural(n)} waiting for local storage or connection`;
       tone = "text-warning";
       break;
     case "retrying":
-      icon = <RefreshCwIcon aria-hidden="true" className="text-warning size-4" />;
+      icon = (
+        <RefreshCwIcon aria-hidden="true" className="text-warning size-4" />
+      );
       label = `Some answers could not be saved — retrying${seconds !== null ? ` in ${seconds}s` : ""} (${plural(n)} pending)`;
       tone = "text-warning";
       break;
@@ -76,33 +90,29 @@ export const SyncStatusIndicator = ({
       break;
     case "closed":
       icon = <LockIcon aria-hidden="true" className="size-4" />;
-      label =
-        snapshot.closedReason ?
-          CLOSED_LABEL[snapshot.closedReason]
+      label = snapshot.closedReason
+        ? CLOSED_LABEL[snapshot.closedReason]
         : CLOSED_LABEL.already_submitted;
       tone =
-        snapshot.closedReason === "already_submitted" ?
-          "text-muted-foreground"
-        : "text-destructive";
+        snapshot.closedReason === "already_submitted"
+          ? "text-muted-foreground"
+          : "text-destructive";
       break;
   }
 
   return (
     <span
       className={cn("inline-flex flex-wrap items-center gap-x-2 gap-y-1", tone)}
-      data-sync-state={snapshot.state}>
-      <span
-        role="status"
-        className="inline-flex items-center gap-1.5">
+      data-sync-state={snapshot.state}
+    >
+      <span role="status" className="inline-flex items-center gap-1.5">
         {icon}
         {label}
+        {snapshot.conflicts > 0 &&
+          ` — server copy kept for ${plural(snapshot.conflicts)} with conflicting edits`}
       </span>
       {(snapshot.state === "error" || snapshot.state === "retrying") && (
-        <Button
-          type="button"
-          variant="outline"
-          size="lg"
-          onClick={onRetry}>
+        <Button type="button" variant="outline" size="lg" onClick={onRetry}>
           <RefreshCwIcon aria-hidden="true" />
           Retry now
         </Button>

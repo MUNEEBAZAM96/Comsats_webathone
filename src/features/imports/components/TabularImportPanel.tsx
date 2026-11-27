@@ -3,167 +3,175 @@
 import { useState } from "react";
 import { toast } from "sonner";
 import {
-  commitBankQuestionImport,
-  commitCandidateImport,
   getCsvTemplates,
-  previewBankQuestionCsv,
-  previewBankQuestionXlsx,
-  previewCandidateCsv,
-  previewCandidateXlsx,
+  runTabularImport,
 } from "@/server/importExportActions";
 import { Button } from "@/components/shadcnui/button";
 
 type Mode = "candidates" | "bank_questions";
+type ImportResult = Awaited<ReturnType<typeof runTabularImport>>;
 
-const MAX_CLIENT_BYTES = 2 * 1024 * 1024;
-
-const toBase64 = async (file: File) => {
-  if (file.size > MAX_CLIENT_BYTES) throw new Error("File exceeds 2MB limit");
+const readFile = async (file: File) => {
+  if (file.size > 2 * 1024 * 1024)
+    throw new Error("The file exceeds the 2 MB limit");
+  const format = /\.csv$/i.test(file.name)
+    ? "csv"
+    : /\.xlsx$/i.test(file.name)
+      ? "xlsx"
+      : null;
+  if (!format) throw new Error("Choose a CSV or XLSX file");
   const buf = new Uint8Array(await file.arrayBuffer());
-  let binary = "";
-  for (const byte of buf) binary += String.fromCharCode(byte);
-  return btoa(binary);
+  const chunks: string[] = [];
+  for (let offset = 0; offset < buf.length; offset += 8192) {
+    chunks.push(String.fromCharCode(...buf.subarray(offset, offset + 8192)));
+  }
+  return {
+    body: btoa(chunks.join("")),
+    fileName: file.name,
+    format,
+    encoding: "base64" as const,
+  };
 };
 
 export const TabularImportPanel = ({ mode }: { mode: Mode }) => {
-  const [preview, setPreview] = useState<{
-    validCount: number;
-    invalid: { row: number; message: string }[];
-    valid: unknown[];
-  } | null>(null);
+  const [file, setFile] = useState<File | null>(null);
+  const [preview, setPreview] = useState<ImportResult | null>(null);
+  const [result, setResult] = useState<ImportResult | null>(null);
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
 
-  const onFile = async (file: File | null) => {
-    if (!file) return;
-    if (file.size > MAX_CLIENT_BYTES) {
-      toast.warning("The file exceeds the 2 MB limit");
-      return;
-    }
+  const run = async (selection: File, commit: boolean) => {
     setBusy(true);
-    setPreview(null);
+    setError("");
+    setResult(null);
     try {
-      const isXlsx = file.name.toLowerCase().endsWith(".xlsx");
-      if (mode === "candidates") {
-        if (isXlsx) {
-          const result = await previewCandidateXlsx(await toBase64(file));
-          setPreview({
-            validCount: result.valid.length,
-            invalid: result.invalid,
-            valid: result.valid,
-          });
-        } else {
-          const text = await file.text();
-          const result = await previewCandidateCsv(text);
-          setPreview({
-            validCount: result.valid.length,
-            invalid: result.invalid,
-            valid: result.valid,
-          });
-        }
-      } else if (isXlsx) {
-        const result = await previewBankQuestionXlsx(await toBase64(file));
-        setPreview({
-          validCount: result.valid.length,
-          invalid: result.invalid,
-          valid: result.valid,
-        });
-      } else {
-        const text = await file.text();
-        const result = await previewBankQuestionCsv(text);
-        setPreview({
-          validCount: result.valid.length,
-          invalid: result.invalid,
-          valid: result.valid,
-        });
-      }
+      const next = await runTabularImport({
+        ...(await readFile(selection)),
+        mode,
+        commit,
+      });
+      setPreview(commit ? null : next);
+      if (commit) setResult(next);
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Preview failed");
+      setError(e instanceof Error ? e.message : "Import request failed");
+    } finally {
+      setBusy(false);
     }
-    setBusy(false);
-  };
-
-  const commit = async () => {
-    if (!preview || preview.valid.length === 0) return;
-    setBusy(true);
-    try {
-      if (mode === "candidates") {
-        const result = await commitCandidateImport(preview.valid);
-        toast.success(
-          `Created ${result.created}, skipped ${result.skipped} duplicates`,
-        );
-      } else {
-        const result = await commitBankQuestionImport(preview.valid);
-        toast.success(
-          `Created ${result.created}, skipped ${result.skipped}`,
-        );
-      }
-      setPreview(null);
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Import failed");
-    }
-    setBusy(false);
   };
 
   const downloadTemplate = async () => {
-    const templates = await getCsvTemplates();
-    const body =
-      mode === "candidates" ? templates.candidates : templates.bankQuestions;
-    const blob = new Blob([body], { type: "text/csv;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download =
-      mode === "candidates" ? "candidates-template.csv" : (
-        "bank-questions-template.csv"
+    try {
+      const templates = await getCsvTemplates();
+      const body =
+        mode === "candidates" ? templates.candidates : templates.bankQuestions;
+      const url = URL.createObjectURL(
+        new Blob([body], { type: "text/csv;charset=utf-8" }),
       );
-    a.click();
-    URL.revokeObjectURL(url);
-    toast.info("Template download started");
+      const a = document.createElement("a");
+      a.href = url;
+      a.download =
+        mode === "candidates"
+          ? "candidates-template.csv"
+          : "bank-questions-template.csv";
+      a.click();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch {
+      toast.error("The import template could not be downloaded");
+    }
   };
 
+  const details = result ?? preview;
   return (
-    <div className="grid min-w-0 grid-cols-1 gap-4 rounded-xl border bg-card p-4">
+    <section
+      aria-label={
+        mode === "candidates" ? "Bulk candidate import" : "Bulk question import"
+      }
+      className="grid min-w-0 gap-4 rounded-xl border bg-card p-4"
+    >
+      <h2 className="font-medium">
+        {mode === "candidates" ? "Import candidates" : "Import questions"}
+      </h2>
       <div className="grid min-w-0 gap-2 sm:grid-cols-[auto_minmax(0,1fr)]">
         <Button
-          type="button"
           variant="outline"
           size="lg"
-          onClick={() => void downloadTemplate()}>
+          onClick={() => void downloadTemplate()}
+        >
           Download CSV template
         </Button>
         <input
           type="file"
           aria-label="Choose a CSV or Excel file"
-          className="min-h-11 w-full min-w-0 rounded-lg border border-input bg-background text-sm text-muted-foreground file:mr-2 file:min-h-11 file:cursor-pointer file:border-0 file:bg-secondary file:px-3 file:font-medium file:text-secondary-foreground focus-visible:outline-2"
-          accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-          onChange={(e) => void onFile(e.target.files?.[0] ?? null)}
+          accept=".csv,.xlsx"
           disabled={busy}
+          className="min-h-11 min-w-0 rounded-lg border bg-background text-sm file:mr-2 file:min-h-11 file:border-0 file:bg-secondary file:px-3"
+          onChange={(event) => {
+            const next = event.target.files?.[0] ?? null;
+            setFile(next);
+            setPreview(null);
+            setResult(null);
+            setError("");
+            if (next) void run(next, false);
+          }}
         />
       </div>
-      {preview ?
-        <div className="grid gap-2 text-sm">
-          <p>
-            Valid: <strong>{preview.validCount}</strong> · Invalid:{" "}
-            <strong>{preview.invalid.length}</strong>
+      {mode === "bank_questions" && (
+        <p className="text-muted-foreground text-sm">
+          Replace the sample topic identifier with the identifier from the topic
+          page URL. Each question is added to your question bank.
+        </p>
+      )}
+      {busy && <p role="status">Processing file…</p>}
+      {error && (
+        <p role="alert" className="text-destructive text-sm">
+          {error}
+        </p>
+      )}
+      {details && (
+        <div className="grid justify-items-start gap-2 text-sm">
+          <p role="status">
+            {result
+              ? `Created ${result.created}, skipped ${result.skipped}, failed ${result.failed}.`
+              : `${details.validCount} ready to import, ${details.skipped} duplicates, ${details.failed} invalid.`}
           </p>
-          {preview.invalid.length > 0 ?
-            <ul className="text-destructive max-h-40 overflow-y-auto text-xs">
-              {preview.invalid.slice(0, 50).map((iss) => (
-                <li key={`${iss.row}-${iss.message}`}>
-                  Row {iss.row}: {iss.message}
+          {details.preview.length > 0 && (
+            <ul className="list-disc pl-5" aria-label="First valid rows">
+              {details.preview.map(({ row, label }) => (
+                <li key={row} className="break-words">
+                  Row {row}: {label}
                 </li>
               ))}
             </ul>
-          : null}
-          <Button
-            type="button"
-            size="lg"
-            disabled={busy || preview.validCount === 0}
-            onClick={() => void commit()}>
-            Import {preview.validCount} valid row(s)
-          </Button>
+          )}
+          {details.duplicates.length > 0 && (
+            <p className="break-all">
+              Duplicate rows {details.duplicates.join(", ")}
+            </p>
+          )}
+          {details.invalid.length > 0 && (
+            <ul
+              className="text-destructive max-h-48 list-disc overflow-y-auto pl-5"
+              aria-label="Invalid rows"
+            >
+              {details.invalid.map(({ row, message }) => (
+                <li key={row}>
+                  Row {row}: {message}
+                </li>
+              ))}
+            </ul>
+          )}
+          {preview && (
+            <Button
+              disabled={busy || preview.failed > 0 || !preview.validCount}
+              onClick={() => {
+                if (file) void run(file, true);
+              }}
+            >
+              Import {preview.validCount} rows
+            </Button>
+          )}
         </div>
-      : null}
-    </div>
+      )}
+    </section>
   );
 };

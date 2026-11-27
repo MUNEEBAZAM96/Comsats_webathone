@@ -18,6 +18,9 @@ export type AnalyticsQuestion = {
   points: number;
   options: string | null;
   manual: boolean;
+  authoredDifficulty?: string | null;
+  topicName?: string | null;
+  subjectName?: string | null;
 };
 
 export type AnalyticsAnswer = {
@@ -27,6 +30,9 @@ export type AnalyticsAnswer = {
   score: number | null;
   manualScore: number | null;
   points: number;
+  authoredDifficulty?: string | null;
+  topicName?: string | null;
+  subjectName?: string | null;
 };
 
 export type AnalyticsInput = {
@@ -34,11 +40,13 @@ export type AnalyticsInput = {
   assigned: number;
   /** Attempts of any status (started the exam). */
   started: number;
+  submitted?: number;
+  pendingGrading?: number;
   /** Finished attempts only. */
   attempts: AnalyticsAttempt[];
   questions: AnalyticsQuestion[];
   answers: AnalyticsAnswer[];
-  incidents: { category: string; severity: string }[];
+  incidents: { category: string; severity: string; count?: number }[];
 };
 
 const CHOICE = new Set(["multiple_choice", "single_choice", "true_false"]);
@@ -88,20 +96,23 @@ export const computeExamAnalytics = (input: AnalyticsInput) => {
   }
 
   const passCount =
-    input.passMarkPercent === null ? null : (
-      percents.filter((p) => p >= (input.passMarkPercent ?? 0)).length
-    );
+    input.passMarkPercent === null
+      ? null
+      : percents.filter((p) => p >= (input.passMarkPercent ?? 0)).length;
 
   // Discrimination groups: top and bottom 27% of graded attempts by total.
   const ranked = [...graded].sort(
-    (a, b) => (b.totalScore ?? 0) - (a.totalScore ?? 0) || a.id.localeCompare(b.id),
+    (a, b) =>
+      (b.totalScore ?? 0) - (a.totalScore ?? 0) || a.id.localeCompare(b.id),
   );
   const groupSize =
-    ranked.length >= 2 ?
-      Math.max(1, Math.round(ranked.length * GROUP_FRACTION))
-    : 0;
+    ranked.length >= 12 && ranked[0]?.totalScore !== ranked.at(-1)?.totalScore
+      ? Math.max(1, Math.round(ranked.length * GROUP_FRACTION))
+      : 0;
   const upper = new Set(ranked.slice(0, groupSize).map((a) => a.id));
-  const lower = new Set(ranked.slice(ranked.length - groupSize).map((a) => a.id));
+  const lower = new Set(
+    ranked.slice(ranked.length - groupSize).map((a) => a.id),
+  );
   const finishedIds = new Set(input.attempts.map((a) => a.id));
 
   const answersByQuestion = new Map<string, AnalyticsAnswer[]>();
@@ -112,32 +123,67 @@ export const computeExamAnalytics = (input: AnalyticsInput) => {
     answersByQuestion.set(a.questionId, list);
   }
 
-  const groupP = (answers: AnalyticsAnswer[], group: Set<string>, points: number) => {
+  const groupP = (
+    answers: AnalyticsAnswer[],
+    group: Set<string>,
+    points: number,
+  ) => {
     if (group.size === 0 || points <= 0) return null;
     const byAttempt = new Map(answers.map((a) => [a.attemptId, a]));
-    const ratios = [...group].map((id) => (byAttempt.get(id)?.score ?? 0) / points);
-    return mean(ratios);
+    const ratios = [...group].flatMap((id) => {
+      const row = byAttempt.get(id);
+      return row?.score != null && row.points > 0
+        ? [row.score / row.points]
+        : [];
+    });
+    return ratios.length >= 3 ? mean(ratios) : null;
   };
 
+  const groups = {
+    difficulty: new Map<string, { total: number; scored: number }>(),
+    topic: new Map<string, { total: number; scored: number }>(),
+    subject: new Map<string, { total: number; scored: number }>(),
+  };
   const questions = [...input.questions]
     .sort((a, b) => a.number - b.number)
     .map((q) => {
       const answers = answersByQuestion.get(q.id) ?? [];
       const responses = answers.length;
       const blank = answers.filter((a) => !a.text?.trim()).length;
-      const scored = answers.filter((a) => a.score !== null);
-      const p =
-        q.points > 0 ? mean(scored.map((a) => (a.score ?? 0) / q.points)) : null;
+      const scored = answers.filter((a) => a.score !== null && a.points > 0);
+      const respondedAndScored = scored.filter((a) => a.text?.trim());
+      const p = mean(scored.map((a) => (a.score ?? 0) / a.points));
+      for (const a of scored) {
+        const subject = a.subjectName ?? q.subjectName ?? "Unclassified";
+        const topic = a.topicName ?? q.topicName;
+        const dimensions = {
+          difficulty:
+            a.authoredDifficulty ?? q.authoredDifficulty ?? "Unclassified",
+          topic: topic ? `${subject} / ${topic}` : "Unclassified",
+          subject,
+        };
+        for (const dimension of ["difficulty", "topic", "subject"] as const) {
+          const label = dimensions[dimension];
+          const bucket = groups[dimension].get(label) ?? {
+            total: 0,
+            scored: 0,
+          };
+          bucket.total += (a.score ?? 0) / a.points;
+          bucket.scored++;
+          groups[dimension].set(label, bucket);
+        }
+      }
       const pUpper = groupP(answers, upper, q.points);
       const pLower = groupP(answers, lower, q.points);
 
-      const optionFrequency =
-        CHOICE.has(q.type) ?
-          (q.type === "true_false" && splitLines(q.options).length !== 2 ?
-            ["True", "False"]
-          : splitLines(q.options)
+      const optionFrequency = CHOICE.has(q.type)
+        ? (q.type === "true_false" && splitLines(q.options).length !== 2
+            ? ["True", "False"]
+            : splitLines(q.options)
           ).map((option) => {
-            const count = answers.filter((a) => splitLines(a.text).includes(option)).length;
+            const count = answers.filter((a) =>
+              splitLines(a.text).includes(option),
+            ).length;
             return { option, count, pct: pct(count, responses) ?? 0 };
           })
         : [];
@@ -153,9 +199,19 @@ export const computeExamAnalytics = (input: AnalyticsInput) => {
         type: q.type,
         points: q.points,
         responses,
+        answered: responses - blank,
+        skipped: blank,
+        correctRate: q.manual
+          ? null
+          : pct(
+              respondedAndScored.filter((a) => a.score === a.points).length,
+              respondedAndScored.length,
+            ),
+        averageScore: round2(mean(scored.map((a) => a.score ?? 0))),
         blankPct: pct(blank, responses) ?? 0,
         difficulty: round2(p),
-        discrimination: pUpper === null || pLower === null ? null : round2(pUpper - pLower),
+        discrimination:
+          pUpper === null || pLower === null ? null : round2(pUpper - pLower),
         optionFrequency,
         averageManualScore: q.manual ? round2(mean(manualMarks)) : null,
       };
@@ -163,7 +219,9 @@ export const computeExamAnalytics = (input: AnalyticsInput) => {
 
   const minutes = input.attempts
     .filter((a) => a.submittedAt)
-    .map((a) => ((a.submittedAt?.getTime() ?? 0) - a.startedAt.getTime()) / 60_000);
+    .map(
+      (a) => ((a.submittedAt?.getTime() ?? 0) - a.startedAt.getTime()) / 60_000,
+    );
   const bySubmitSource: Record<string, number> = {};
   for (const a of input.attempts) {
     const key = a.submitSource ?? "manual";
@@ -172,11 +230,12 @@ export const computeExamAnalytics = (input: AnalyticsInput) => {
 
   const countBy = (key: "category" | "severity") => {
     const out: Record<string, number> = {};
-    for (const i of input.incidents) out[i[key]] = (out[i[key]] ?? 0) + 1;
+    for (const i of input.incidents)
+      out[i[key]] = (out[i[key]] ?? 0) + (i.count ?? 1);
     return out;
   };
 
-  const submitted = input.attempts.length;
+  const submitted = input.submitted ?? input.attempts.length;
   return {
     empty: submitted === 0,
     participation: {
@@ -185,7 +244,7 @@ export const computeExamAnalytics = (input: AnalyticsInput) => {
       submitted,
       notStarted: Math.max(0, input.assigned - input.started),
       completionRate: pct(submitted, input.assigned),
-      pendingGrading: submitted - graded.length,
+      pendingGrading: input.pendingGrading ?? submitted - graded.length,
     },
     scores: {
       graded: graded.length,
@@ -202,12 +261,24 @@ export const computeExamAnalytics = (input: AnalyticsInput) => {
       histogram,
     },
     questions,
+    performance: (["difficulty", "topic", "subject"] as const).map(
+      (dimension) => ({
+        dimension,
+        rows: [...groups[dimension]]
+          .map(([label, bucket]) => ({
+            label,
+            scored: bucket.scored,
+            percent: roundScore((bucket.total * 100) / bucket.scored),
+          }))
+          .sort((a, b) => a.label.localeCompare(b.label)),
+      }),
+    ),
     time: {
       medianMinutes: round2(median(minutes)),
       bySubmitSource,
     },
     integrity: {
-      total: input.incidents.length,
+      total: input.incidents.reduce((sum, item) => sum + (item.count ?? 1), 0),
       byCategory: countBy("category"),
       bySeverity: countBy("severity"),
     },

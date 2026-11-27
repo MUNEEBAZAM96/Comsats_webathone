@@ -11,14 +11,21 @@ export const metadata: Metadata = {
   description: "Take exam",
 };
 
-const Unavailable = ({ title, message }: { title: string; message: string }) => (
+const Unavailable = ({
+  title,
+  message,
+}: {
+  title: string;
+  message: string;
+}) => (
   <section className="mx-auto grid w-full max-w-2xl gap-4 px-4 py-12">
     <h1 className="text-2xl font-medium">{title}</h1>
     <p className="text-muted-foreground">{message}</p>
     <div>
       <Link
         href="/student/exams"
-        className="text-primary text-sm hover:underline">
+        className="text-primary text-sm hover:underline"
+      >
         ← Back to My Exams
       </Link>
     </div>
@@ -64,6 +71,7 @@ const StudentTakeExamPage = async ({
   return (
     <ExamPlayer
       attemptId={data.attempt.id}
+      examId={id}
       examTitle={data.attempt.exam.title}
       instructions={data.attempt.exam.instructions}
       initialRemainingMs={data.clock.remainingMs}

@@ -236,6 +236,8 @@ model Question {
   difficulty    String   @default("medium")
   /// JSON marking scheme snapshot from bank / editor
   markingScheme String?
+  topicName     String?
+  subjectName   String?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
@@ -302,6 +304,8 @@ model AttemptQuestion {
   order            Int         @default(0)
   difficulty       String      @default("medium")
   markingScheme    String?
+  topicName        String?
+  subjectName      String?
   /// Display order of options when shuffleOptions is on (newline-separated texts)
   optionOrder      String?
   createdAt        DateTime    @default(now())
@@ -455,6 +459,8 @@ model ReportVerification {
   attemptId     String?
   /// SHA-256 hex of canonical non-PII report payload (server-computed)
   contentHash   String
+  pdfHash       String?
+  documentVersion String?
   /// Public-safe fields for verification page (JSON): examTitle, score, maxScore, pct, publishedAt
   publicMeta    String
   publishedById String

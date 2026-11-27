@@ -4,6 +4,8 @@ import { format } from "date-fns";
 import { ClockIcon, EyeOffIcon } from "lucide-react";
 import { requireRole } from "@/server/session";
 import { getResultDetail } from "@/server/studentExamActions";
+import { FinishedAttemptCleanup } from "@/features/exam-workspace/components/FinishedAttemptCleanup";
+import { ReportPdfControls } from "@/features/reports/components/PublishResultReportButton";
 import { ResultReview } from "@/components/Student/ResultReview";
 import {
   Card,
@@ -25,18 +27,19 @@ const StudentResultDetailPage = async ({
   await requireRole("student");
   const { id } = await params;
   const data = await getResultDetail(id);
-  const submitted =
-    data.submittedAt ?
-      `Submitted ${format(data.submittedAt, "MMM d, yyyy, h:mm a")}.`
+  const submitted = data.submittedAt
+    ? `Submitted ${format(data.submittedAt, "MMM d, yyyy, h:mm a")}.`
     : "Submitted.";
 
   return (
     <section className="mx-auto grid w-full max-w-3xl gap-6">
+      <FinishedAttemptCleanup attemptId={id} />
       <div className="grid gap-1">
         <h1 className="text-2xl font-medium">{data.examTitle} — Results</h1>
         <Link
           href="/student/results"
-          className="text-primary text-sm hover:underline">
+          className="text-primary text-sm hover:underline"
+        >
           ← Back to My Results
         </Link>
       </div>
@@ -45,19 +48,16 @@ const StudentResultDetailPage = async ({
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <ClockIcon
-                aria-hidden="true"
-                className="text-info size-5"
-              />
-              {data.status === "submitted" ?
-                "Being graded"
-              : "Submitted — awaiting results"}
+              <ClockIcon aria-hidden="true" className="text-info size-5" />
+              {data.status === "submitted"
+                ? "Being graded"
+                : "Submitted — awaiting results"}
             </CardTitle>
             <CardDescription>
               {submitted} Your answers were received.{" "}
-              {data.status === "submitted" ?
-                "Some answers are being marked by an examiner. "
-              : ""}
+              {data.status === "submitted"
+                ? "Some answers are being marked by an examiner. "
+                : ""}
               Scores and feedback appear here once the examiner publishes
               results.
             </CardDescription>
@@ -83,6 +83,9 @@ const StudentResultDetailPage = async ({
         </Card>
       )}
 
+      {data.visibility === "released" && (
+        <ReportPdfControls kind="own" attemptId={id} />
+      )}
       {data.visibility === "released" && (
         <ResultReview
           totalScore={data.totalScore}

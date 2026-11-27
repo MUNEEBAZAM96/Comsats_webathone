@@ -53,18 +53,95 @@ const input: AnalyticsInput = {
     },
   ],
   answers: [
-    { attemptId: "A", questionId: "q1", text: "x", score: 2, manualScore: null, points: 2 },
-    { attemptId: "B", questionId: "q1", text: "x", score: 2, manualScore: null, points: 2 },
-    { attemptId: "C", questionId: "q1", text: "y", score: 0, manualScore: null, points: 2 },
-    { attemptId: "D", questionId: "q1", text: "", score: 0, manualScore: null, points: 2 },
-    { attemptId: "E", questionId: "q1", text: "z", score: 0, manualScore: null, points: 2 },
-    { attemptId: "A", questionId: "q2", text: "…", score: 8, manualScore: 8, points: 8 },
-    { attemptId: "B", questionId: "q2", text: "…", score: 6, manualScore: 6, points: 8 },
-    { attemptId: "C", questionId: "q2", text: "…", score: 5, manualScore: 5, points: 8 },
-    { attemptId: "D", questionId: "q2", text: "…", score: 2, manualScore: 2, points: 8 },
-    { attemptId: "E", questionId: "q2", text: "…", score: null, manualScore: null, points: 8 },
+    {
+      attemptId: "A",
+      questionId: "q1",
+      text: "x",
+      score: 2,
+      manualScore: null,
+      points: 2,
+    },
+    {
+      attemptId: "B",
+      questionId: "q1",
+      text: "x",
+      score: 2,
+      manualScore: null,
+      points: 2,
+    },
+    {
+      attemptId: "C",
+      questionId: "q1",
+      text: "y",
+      score: 0,
+      manualScore: null,
+      points: 2,
+    },
+    {
+      attemptId: "D",
+      questionId: "q1",
+      text: "",
+      score: 0,
+      manualScore: null,
+      points: 2,
+    },
+    {
+      attemptId: "E",
+      questionId: "q1",
+      text: "z",
+      score: 0,
+      manualScore: null,
+      points: 2,
+    },
+    {
+      attemptId: "A",
+      questionId: "q2",
+      text: "…",
+      score: 8,
+      manualScore: 8,
+      points: 8,
+    },
+    {
+      attemptId: "B",
+      questionId: "q2",
+      text: "…",
+      score: 6,
+      manualScore: 6,
+      points: 8,
+    },
+    {
+      attemptId: "C",
+      questionId: "q2",
+      text: "…",
+      score: 5,
+      manualScore: 5,
+      points: 8,
+    },
+    {
+      attemptId: "D",
+      questionId: "q2",
+      text: "…",
+      score: 2,
+      manualScore: 2,
+      points: 8,
+    },
+    {
+      attemptId: "E",
+      questionId: "q2",
+      text: "…",
+      score: null,
+      manualScore: null,
+      points: 8,
+    },
     // In-progress attempt (not in `attempts`) must be ignored.
-    { attemptId: "Z", questionId: "q1", text: "x", score: 2, manualScore: null, points: 2 },
+    {
+      attemptId: "Z",
+      questionId: "q1",
+      text: "x",
+      score: 2,
+      manualScore: null,
+      points: 2,
+    },
   ],
   incidents: [
     { category: "connectivity", severity: "low" },
@@ -135,8 +212,10 @@ test("difficulty, discrimination, blanks and option frequency", () => {
   assert.equal(q1.responses, 5);
   assert.equal(q1.blankPct, 20);
   assert.equal(q1.difficulty, 0.4);
-  // 4 graded → group of round(4 × 0.27) = 1: top A (1.0) − bottom D (0.0).
-  assert.equal(q1.discrimination, 1);
+  assert.equal(q1.discrimination, null);
+  assert.equal(q1.correctRate, 50);
+  assert.equal(q1.skipped, 1);
+  assert.equal(q1.averageScore, 0.8);
   assert.deepEqual(q1.optionFrequency, [
     { option: "x", count: 2, pct: 40 },
     { option: "y", count: 1, pct: 20 },
@@ -149,7 +228,7 @@ test("manual question: p excludes unmarked, average manual score", () => {
   const q2 = a.questions[1]!;
   assert.equal(q2.difficulty, 0.66);
   assert.equal(q2.averageManualScore, 5.25);
-  assert.equal(q2.discrimination, 0.75);
+  assert.equal(q2.discrimination, null);
   assert.deepEqual(q2.optionFrequency, []);
 });
 
@@ -188,6 +267,37 @@ test("empty exam", () => {
 test("single graded attempt has no discrimination index", () => {
   const s = computeExamAnalytics({ ...input, attempts: [input.attempts[0]!] });
   assert.equal(s.questions[0]!.discrimination, null);
+});
+
+test("results with sufficient varied scores produce a discrimination index", () => {
+  const attempts = Array.from({ length: 12 }, (_, index) =>
+    attempt(String(index), index, 30, "manual"),
+  );
+  const result = computeExamAnalytics({
+    ...input,
+    attempts,
+    questions: [
+      {
+        ...input.questions[1]!,
+        authoredDifficulty: "easy",
+        topicName: "Tables",
+        subjectName: "Data",
+      },
+    ],
+    answers: attempts.map(({ id }, index) => ({
+      attemptId: id,
+      questionId: "q1",
+      text: "x",
+      score: index >= 6 ? 2 : 0,
+      manualScore: null,
+      points: 2,
+    })),
+  });
+  assert.equal(result.questions[0]!.discrimination, 1);
+  assert.deepEqual(
+    result.performance.find(({ dimension }) => dimension === "topic")?.rows,
+    [{ label: "Data / Tables", scored: 12, percent: 50 }],
+  );
 });
 
 console.log(`\n${passed} analytics tests passed`);

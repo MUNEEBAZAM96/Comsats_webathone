@@ -15,18 +15,28 @@ export const upsertLocalAnswer = async (input: {
   attemptId: string;
   questionId: string;
   text: string;
+  minimumSeq?: number;
 }): Promise<LocalAnswer> => {
   const db = await getOfflineDb();
   const tx = db.transaction("answers", "readwrite");
   const id = keyFor(input.attemptId, input.questionId);
   const existing = await tx.store.get(id);
 
-  if (existing && existing.text === input.text) {
+  if (
+    existing &&
+    existing.text === input.text &&
+    existing.clientSeq > (input.minimumSeq ?? 0)
+  ) {
     await tx.done;
     return existing;
   }
 
-  const clientSeq = Math.max(existing?.clientSeq ?? 0, existing?.ackSeq ?? 0) + 1;
+  const clientSeq =
+    Math.max(
+      existing?.clientSeq ?? 0,
+      existing?.ackSeq ?? 0,
+      input.minimumSeq ?? 0,
+    ) + 1;
   const row: LocalAnswer = {
     id,
     attemptId: input.attemptId,
@@ -58,7 +68,9 @@ export const listLocalAnswers = async (attemptId: string) => {
 
 export const listPendingAnswers = async (attemptId: string) => {
   const all = await listLocalAnswers(attemptId);
-  return all.filter((a) => a.syncStatus === "pending" || a.syncStatus === "failed");
+  return all.filter(
+    (a) => a.syncStatus === "pending" || a.syncStatus === "failed",
+  );
 };
 
 /**
@@ -77,9 +89,14 @@ export const markAnswerSynced = async (
     await tx.store.put({
       ...row,
       ackSeq: Math.max(row.ackSeq ?? 0, seq),
-      ...(row.clientSeq <= seq ?
-        { syncStatus: "synced" as const, attempts: 0, lastError: null, nextRetryAt: null }
-      : {}),
+      ...(row.clientSeq <= seq
+        ? {
+            syncStatus: "synced" as const,
+            attempts: 0,
+            lastError: null,
+            nextRetryAt: null,
+          }
+        : {}),
     });
   }
   await tx.done;
@@ -145,6 +162,7 @@ export const applyServerCopy = async (
 export const seedSeqFromServer = async (
   attemptId: string,
   serverRows: { questionId: string; clientSeq: number; text: string | null }[],
+  onConflict?: (count: number) => void,
 ): Promise<LocalAnswer[]> => {
   const db = await getOfflineDb();
   const tx = db.transaction("answers", "readwrite");
@@ -152,10 +170,17 @@ export const seedSeqFromServer = async (
   const local = await tx.store.index("by-attempt").getAll(attemptId);
   const localMap = new Map(local.map((r) => [r.questionId, r]));
   const recovered: LocalAnswer[] = [];
+  let conflicts = 0;
 
   for (const server of serverRows) {
     const row = localMap.get(server.questionId);
     if (!row || row.clientSeq <= server.clientSeq) {
+      if (
+        row &&
+        row.syncStatus !== "synced" &&
+        row.text !== (server.text ?? "")
+      )
+        conflicts++;
       await tx.store.put({
         id: keyFor(attemptId, server.questionId),
         attemptId,
@@ -185,6 +210,7 @@ export const seedSeqFromServer = async (
     }
   }
   await tx.done;
+  if (conflicts) onConflict?.(conflicts);
   return recovered;
 };
 
@@ -207,8 +233,14 @@ export const saveClockMeta = async (
 export const clearAttemptAnswers = async (attemptId: string) => {
   const db = await getOfflineDb();
   const tx = db.transaction(["answers", "events", "meta"], "readwrite");
-  const answers = await tx.objectStore("answers").index("by-attempt").getAllKeys(attemptId);
-  const events = await tx.objectStore("events").index("by-attempt").getAllKeys(attemptId);
+  const answers = await tx
+    .objectStore("answers")
+    .index("by-attempt")
+    .getAllKeys(attemptId);
+  const events = await tx
+    .objectStore("events")
+    .index("by-attempt")
+    .getAllKeys(attemptId);
   await Promise.all([
     ...answers.map((key) => tx.objectStore("answers").delete(key)),
     ...events.map((key) => tx.objectStore("events").delete(key)),

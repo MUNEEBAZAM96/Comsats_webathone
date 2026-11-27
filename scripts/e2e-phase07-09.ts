@@ -1,6 +1,7 @@
 import "dotenv/config";
 import { randomBytes } from "node:crypto";
 import { readFileSync } from "node:fs";
+import * as XLSX from "xlsx";
 import {
   chromium,
   type Browser,
@@ -9,14 +10,20 @@ import {
   type Response,
 } from "@playwright/test";
 import { makeSignature } from "better-auth/crypto";
-import { addDays, addMinutes, subHours, subMinutes, subSeconds } from "date-fns";
+import {
+  addDays,
+  addMinutes,
+  subHours,
+  subMinutes,
+  subSeconds,
+} from "date-fns";
 import prisma from "../src/lib/database/dbClient";
 import { hashPasswordFunction } from "../src/lib/argon2";
 import { buildQuestionGradingFields } from "../src/lib/exam/markingScheme";
 
 /**
  * Browser verification for Phase 07 (resilience), 08 (monitoring) and 09
- * (grading and results) against a running production server:
+ * (grading and results), plus Phase 10, against a running production server:
  *   E2E_BASE_URL=http://localhost:3100 E2E_CHANNEL=msedge npx tsx scripts/e2e-phase07-09.ts
  * Server actions are called over HTTP with each role's session cookies (IDs
  * from `.next/server/server-reference-manifest.json`), and every result is
@@ -30,14 +37,20 @@ const results: Array<{ name: string; ok: boolean; detail: string }> = [];
 
 const check = (name: string, ok: boolean, detail = "") => {
   results.push({ name, ok, detail });
-  console.log(`${ok ? "PASS" : "FAIL"}  ${name}${detail ? ` — ${detail}` : ""}`);
+  console.log(
+    `${ok ? "PASS" : "FAIL"}  ${name}${detail ? ` — ${detail}` : ""}`,
+  );
 };
 
 const step = async (name: string, fn: () => Promise<void>) => {
   try {
     await fn();
   } catch (e) {
-    check(name, false, (e instanceof Error ? e.message : String(e)).split("\n")[0]);
+    check(
+      name,
+      false,
+      (e instanceof Error ? e.message : String(e)).split("\n")[0],
+    );
   }
 };
 
@@ -77,7 +90,12 @@ const workerPath = (workers: string[], id: string) => {
   );
 };
 
-type ActionResponse = { status: number; body: string; ok: boolean | null; error: string };
+type ActionResponse = {
+  status: number;
+  body: string;
+  ok: boolean | null;
+  error: string;
+};
 
 const callAction = async (
   ctx: BrowserContext,
@@ -98,20 +116,27 @@ const callAction = async (
     maxRedirects: 0,
   });
   const body = await res.text();
-  const ok =
-    body.includes('"ok":true') ? true
-    : body.includes('"ok":false') ? false
-    : null;
-  const error = ok === false ? (/"error":"((?:[^"\\]|\\.)*)"/.exec(body)?.[1] ?? "") : "";
+  const ok = body.includes('"ok":true')
+    ? true
+    : body.includes('"ok":false')
+      ? false
+      : null;
+  const error =
+    ok === false ? (/"error":"((?:[^"\\]|\\.)*)"/.exec(body)?.[1] ?? "") : "";
   return { status: res.status(), body, ok, error };
 };
 
 /** Rejected: an `ok:false` result, a thrown error, or a redirect away. */
-const rejected = (r: ActionResponse) => r.ok === false || r.status >= 300 || r.ok === null;
+const rejected = (r: ActionResponse) =>
+  r.ok === false || r.status >= 300 || r.ok === null;
 
 const GRADING = "src/server/gradingActions.ts";
 const MONITOR = "src/server/monitoringActions.ts";
 const EXPORTS = "src/server/importExportActions.ts";
+const REPORTS = "src/server/reportActions.ts";
+const ANALYTICS = "src/server/analyticsActions.ts";
+const PHASE10_EMAIL = "phase10-e2e-candidate@example.com";
+const PHASE10_QUESTION = `${PREFIX} Imported sample question`;
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -179,21 +204,47 @@ const gradingQuestions = [
 ];
 
 const TEMP_USERS = [
-  { email: "e2e7-examiner2@example.com", name: "E2E7 Other Examiner", role: "examiner" },
-  { email: "e2e7-proctor2@example.com", name: "E2E7 Other Proctor", role: "proctor" },
+  {
+    email: "e2e7-examiner2@example.com",
+    name: "E2E7 Other Examiner",
+    role: "examiner",
+  },
+  {
+    email: "e2e7-proctor2@example.com",
+    name: "E2E7 Other Proctor",
+    role: "proctor",
+  },
 ];
 
 const cleanFixtures = async () => {
-  await prisma.examAttempt.deleteMany({ where: { exam: { title: { startsWith: PREFIX } } } });
+  const exams = await prisma.exam.findMany({
+    where: { title: { startsWith: PREFIX } },
+    select: { id: true },
+  });
+  await prisma.reportVerification.deleteMany({
+    where: { examId: { in: exams.map(({ id }) => id) } },
+  });
+  await prisma.importJob.deleteMany({
+    where: { fileName: { startsWith: "phase10-e2e-" } },
+  });
+  await prisma.bankQuestion.deleteMany({ where: { text: PHASE10_QUESTION } });
+  await prisma.user.deleteMany({
+    where: { email: PHASE10_EMAIL, name: `${PREFIX} Imported Candidate` },
+  });
+  await prisma.examAttempt.deleteMany({
+    where: { exam: { title: { startsWith: PREFIX } } },
+  });
   await prisma.exam.deleteMany({ where: { title: { startsWith: PREFIX } } });
-  await prisma.user.deleteMany({ where: { email: { in: TEMP_USERS.map((u) => u.email) } } });
+  await prisma.user.deleteMany({
+    where: { email: { in: TEMP_USERS.map((u) => u.email) } },
+  });
 };
 
 const createFixtures = async () => {
   await cleanFixtures();
   const [examiner, proctor, student] = await Promise.all(
-    ["examiner@example.com", "proctor@example.com", "student@example.com"].map((email) =>
-      prisma.user.findUniqueOrThrow({ where: { email } }),
+    ["examiner@example.com", "proctor@example.com", "student@example.com"].map(
+      (email) => prisma.user.findUniqueOrThrow({ where: { email } }),
     ),
   );
   for (const u of TEMP_USERS) {
@@ -228,15 +279,28 @@ const createFixtures = async () => {
         createdById: examiner.id,
         ...extra,
         questions: {
-          create: questions.map((q, order) => ({ ...(q as never as object), order })) as never,
+          create: questions.map((q, order) => ({
+            ...(q as never as object),
+            order,
+          })) as never,
         },
-        assignments: { create: { userId: student.id, assignedById: examiner.id } },
-        proctors: { create: { proctorId: proctor.id, assignedById: examiner.id } },
+        assignments: {
+          create: { userId: student.id, assignedById: examiner.id },
+        },
+        proctors: {
+          create: { proctorId: proctor.id, assignedById: examiner.id },
+        },
       },
     });
 
-  const sync = await make("Resilience exam", baseQuestions.map((q) => withScheme(q)));
-  const deadline = await make("Offline deadline exam", baseQuestions.map((q) => withScheme(q)));
+  const sync = await make(
+    "Resilience exam",
+    baseQuestions.map((q) => withScheme(q)),
+  );
+  const deadline = await make(
+    "Offline deadline exam",
+    baseQuestions.map((q) => withScheme(q)),
+  );
   const grading = await make("Grading exam", gradingQuestions, {
     resultReveal: "score_only",
     passMarkPercent: 50,
@@ -249,7 +313,8 @@ const createFixtures = async () => {
 // ---------------------------------------------------------------------------
 
 const AUTH_SECRET = process.env.BETTER_AUTH_SECRET;
-if (!AUTH_SECRET) throw new Error("BETTER_AUTH_SECRET is required for e2e session minting");
+if (!AUTH_SECRET)
+  throw new Error("BETTER_AUTH_SECRET is required for e2e session minting");
 
 const login = async (browser: Browser, email: string) => {
   const user = await prisma.user.findUniqueOrThrow({ where: { email } });
@@ -278,12 +343,17 @@ const login = async (browser: Browser, email: string) => {
   });
   const page = await context.newPage();
   const home =
-    user.role === "admin" ? "/admin"
-    : user.role === "examiner" ? "/examiner"
-    : user.role === "proctor" ? "/proctor"
-    : "/student";
+    user.role === "admin"
+      ? "/admin"
+      : user.role === "examiner"
+        ? "/examiner"
+        : user.role === "proctor"
+          ? "/proctor"
+          : "/student";
   await page.goto(home);
-  await page.waitForURL((url) => url.pathname.startsWith(home), { timeout: 20_000 });
+  await page.waitForURL((url) => url.pathname.startsWith(home), {
+    timeout: 20_000,
+  });
   return { context, page };
 };
 
@@ -295,7 +365,7 @@ const cloneContext = async (browser: Browser, ctx: BrowserContext) =>
   });
 
 const waitSaved = (page: Page, timeout = 20_000) =>
-  page.getByText("All answers saved").waitFor({ timeout });
+  page.locator('[data-sync-state="synced"]').waitFor({ timeout });
 
 const next = async (page: Page, n: number, of: number) => {
   await page.getByRole("button", { name: "Next" }).click();
@@ -313,7 +383,8 @@ const goTo = async (page: Page, n: number, of: number) => {
   await page.getByText(`Question ${n} of ${of}`).waitFor();
 };
 
-const textBox = (page: Page) => page.locator('textarea[aria-labelledby$="-prompt"]');
+const textBox = (page: Page) =>
+  page.locator('textarea[aria-labelledby$="-prompt"]');
 
 const timerSeconds = async (page: Page) =>
   (await page.getByLabel("Time remaining").innerText())
@@ -325,7 +396,9 @@ const timerSeconds = async (page: Page) =>
 const attemptFor = (examId: string, userId: string) =>
   prisma.examAttempt.findUnique({
     where: { userId_examId: { userId, examId } },
-    include: { answers: { include: { question: { select: { order: true } } } } },
+    include: {
+      answers: { include: { question: { select: { order: true } } } },
+    },
   });
 
 const answerByOrder = (
@@ -333,7 +406,11 @@ const answerByOrder = (
   order: number,
 ) => attempt?.answers.find((a) => a.question.order === order);
 
-const until = async (fn: () => Promise<boolean>, timeout: number, every = 1000) => {
+const until = async (
+  fn: () => Promise<boolean>,
+  timeout: number,
+  every = 1000,
+) => {
   const end = Date.now() + timeout;
   while (Date.now() < end) {
     if (await fn()) return true;
@@ -376,8 +453,43 @@ const main = async () => {
   const S = await login(browser, "student@example.com");
   const E = await login(browser, "examiner@example.com");
   const P = await login(browser, "proctor@example.com");
+  const A = await login(
+    browser,
+    process.env.BETTER_AUTH_SEED_ADMIN_EMAIL ?? "admin@example.com",
+  );
   const E2 = await login(browser, "e2e7-examiner2@example.com");
   const P2 = await login(browser, "e2e7-proctor2@example.com");
+
+  await step("Phase 10 practice is mobile-friendly and isolated", async () => {
+    const before = await prisma.examAttempt.count({
+      where: { userId: student.id },
+    });
+    const page = await S.context.newPage();
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto("/student/practice");
+    await page.getByRole("heading", { name: "Practice exam" }).waitFor();
+    await page.getByRole("radio", { name: "Four" }).check();
+    await page.getByRole("button", { name: "Next", exact: true }).click();
+    await page.getByRole("checkbox", { name: "Red" }).check();
+    await page.getByRole("button", { name: "Mark for review" }).click();
+    await page.getByRole("button", { name: "Next", exact: true }).click();
+    await page.getByRole("radio", { name: "True" }).check();
+    await page.getByRole("button", { name: "Next", exact: true }).click();
+    await textBox(page).fill("Repair a leaking tap.");
+    await page.getByRole("button", { name: "Finish practice" }).click();
+    await page
+      .getByText("You answered 4 of 4 questions", { exact: false })
+      .waitFor();
+    check(
+      "practice records no official attempt and fits a phone",
+      before ===
+        (await prisma.examAttempt.count({ where: { userId: student.id } })) &&
+        (await page.evaluate(
+          () => document.documentElement.scrollWidth <= innerWidth,
+        )),
+    );
+    await page.close();
+  });
 
   // ----- Phase 08: monitor access --------------------------------------------
   const monitorUrl = `/proctor/exams/${ids.sync}`;
@@ -401,7 +513,9 @@ const main = async () => {
     check(
       "unassigned proctor is denied the monitor page",
       !(await P2.page.locator("[data-candidate]").count()) &&
-        (await P2.page.locator("main").innerText()).includes("Monitor unavailable"),
+        (await P2.page.locator("main").innerText()).includes(
+          "Monitor unavailable",
+        ),
     );
     await E2.page.goto(`/examiner/exams/${ids.sync}/monitor`);
     await E2.page.waitForLoadState("networkidle");
@@ -409,17 +523,35 @@ const main = async () => {
       "non-owner examiner is denied the monitor page",
       !(await E2.page.locator("[data-candidate]").count()),
     );
-    const p2 = await callAction(P2.context, MONITOR, "refreshExamMonitor", [ids.sync], ids.sync);
-    const e2 = await callAction(E2.context, MONITOR, "refreshExamMonitor", [ids.sync], ids.sync);
-    const p1 = await callAction(P.context, MONITOR, "refreshExamMonitor", [ids.sync], ids.sync);
+    const p2 = await callAction(
+      P2.context,
+      MONITOR,
+      "refreshExamMonitor",
+      [ids.sync],
+      ids.sync,
+    );
+    const e2 = await callAction(
+      E2.context,
+      MONITOR,
+      "refreshExamMonitor",
+      [ids.sync],
+      ids.sync,
+    );
+    const p1 = await callAction(
+      P.context,
+      MONITOR,
+      "refreshExamMonitor",
+      [ids.sync],
+      ids.sync,
+    );
     check("monitor action rejects unassigned proctor", rejected(p2), p2.error);
     check("monitor action rejects non-owner examiner", rejected(e2), e2.error);
     check("monitor action allows assigned proctor", p1.ok === true);
   });
 
-  // ----- Phase 07: offline answers survive a closed tab -----------------------
-  let sPage = await S.context.newPage();
-  await step("offline answers survive closing the tab", async () => {
+  // ----- Phase 07 and 10: offline refresh and workspace preferences -----------
+  const sPage = await S.context.newPage();
+  await step("offline answers survive refresh", async () => {
     await sPage.goto(`/student/exams/${ids.sync}`);
     await sPage.getByText("Question 1 of 4").waitFor();
     const live = await studentRow("in_progress")
@@ -428,6 +560,53 @@ const main = async () => {
       .catch(() => false);
     check("monitor shows in_progress within 10s of starting", live);
 
+    await sPage.waitForFunction(() => !!navigator.serviceWorker.controller);
+    await sPage.getByText("Workspace preferences", { exact: true }).click();
+    await sPage.getByLabel("Density", { exact: true }).selectOption("compact");
+    await sPage.getByLabel("Text size", { exact: true }).selectOption("large");
+    await sPage
+      .getByLabel("Navigation", { exact: true })
+      .selectOption("drawer");
+    await sPage
+      .getByRole("textbox", { name: "Notes" })
+      .fill("Private Phase 10 scratchpad");
+    await sPage.reload();
+    await sPage.getByText("Workspace preferences", { exact: true }).click();
+    await sPage.waitForFunction(
+      () =>
+        document.querySelector("textarea")?.value ===
+        "Private Phase 10 scratchpad",
+    );
+    check(
+      "workspace choices and private notes survive refresh",
+      (await sPage.getByLabel("Density", { exact: true }).inputValue()) ===
+        "compact" &&
+        (await sPage.getByLabel("Navigation", { exact: true }).inputValue()) ===
+          "drawer" &&
+        (await sPage.getByRole("textbox", { name: "Notes" }).inputValue()) ===
+          "Private Phase 10 scratchpad",
+    );
+    await sPage.getByRole("button", { name: "Reset defaults" }).click();
+    check(
+      "reset restores workspace defaults",
+      (await sPage.getByLabel("Density", { exact: true }).inputValue()) ===
+        "comfortable" &&
+        (await sPage.getByLabel("Navigation", { exact: true }).inputValue()) ===
+          "sidebar",
+    );
+
+    const desktop = sPage.viewportSize()!;
+    await sPage.setViewportSize({ width: 390, height: 844 });
+    check(
+      "official workspace fits a phone and exposes question navigation",
+      (await sPage
+        .getByRole("button", { name: "Questions", exact: true })
+        .isVisible()) &&
+        (await sPage.evaluate(
+          () => document.documentElement.scrollWidth <= innerWidth,
+        )),
+    );
+    await sPage.setViewportSize(desktop);
     await S.context.setOffline(true);
     await sPage.getByRole("radio", { name: "const", exact: true }).check();
     await next(sPage, 2, 4);
@@ -435,28 +614,49 @@ const main = async () => {
       await sPage.getByRole("checkbox", { name: m, exact: true }).check();
     await next(sPage, 3, 4);
     await sPage.getByRole("radio", { name: "True", exact: true }).check();
-    await sPage.getByText(/Offline — answers kept on this device \(3 /).waitFor({ timeout: 10_000 });
+    await sPage
+      .getByText(/Offline — 3 answers stored on this device/)
+      .waitFor({ timeout: 10_000 });
     check("offline indicator counts 3 unsent answers", true);
     let attempt = await attemptFor(ids.sync, student.id);
-    check("nothing reached the server while offline", attempt?.answers.length === 0);
+    check(
+      "nothing reached the server while offline",
+      attempt?.answers.length === 0,
+    );
 
-    // A plain reload cannot load while offline (no service worker), so the
-    // tab is closed instead and the exam reopened once the network is back.
-    await sPage.close();
+    await sPage.reload();
+    await sPage
+      .getByRole("heading", { name: "Offline exam recovery" })
+      .waitFor();
+    await sPage
+      .getByText("3 pending answers are stored in this browser.")
+      .waitFor();
+    check(
+      "offline refresh restores draft answers",
+      (await sPage
+        .getByText("3 pending answers are stored in this browser.")
+        .isVisible()) &&
+        (await sPage
+          .getByRole("listitem")
+          .filter({ hasText: "const" })
+          .count()) === 1,
+    );
     await S.context.setOffline(false);
-    sPage = await S.context.newPage();
-    await sPage.goto(`/student/exams/${ids.sync}`);
     await sPage.getByText("Question 1 of 4").waitFor();
     await until(
-      async () => (await attemptFor(ids.sync, student.id))?.answers.length === 3,
+      async () =>
+        (await attemptFor(ids.sync, student.id))?.answers.length === 3,
       20_000,
     );
     await waitSaved(sPage);
     attempt = await attemptFor(ids.sync, student.id);
     check(
       "all 3 offline answers recovered from IndexedDB and saved",
-      attempt?.answers.length === 3 && attempt.answers.every((a) => a.clientSeq >= 1),
-      attempt?.answers.map((a) => `${a.question.order}:${a.clientSeq}`).join(", "),
+      attempt?.answers.length === 3 &&
+        attempt.answers.every((a) => a.clientSeq >= 1),
+      attempt?.answers
+        .map((a) => `${a.question.order}:${a.clientSeq}`)
+        .join(", "),
     );
     const counted = await P.page
       .getByText("3/4 answered")
@@ -471,7 +671,8 @@ const main = async () => {
     attempt = await attemptFor(ids.sync, student.id);
     check(
       "a later edit raises clientSeq in the database",
-      answerByOrder(attempt, 0)!.clientSeq > before && answerByOrder(attempt, 0)!.text === "let",
+      answerByOrder(attempt, 0)!.clientSeq > before &&
+        answerByOrder(attempt, 0)!.text === "let",
       `${before} → ${answerByOrder(attempt, 0)!.clientSeq}`,
     );
   });
@@ -491,7 +692,8 @@ const main = async () => {
     await sPage.getByText("Question 1 of 4").waitFor();
     const recovered = await until(
       async () =>
-        answerByOrder(await attemptFor(ids.sync, student.id), 3)?.text === `a queue ${SECRET}`,
+        answerByOrder(await attemptFor(ids.sync, student.id), 3)?.text ===
+        `a queue ${SECRET}`,
       20_000,
     );
     check("aborted save recovered and stored after reload", recovered);
@@ -516,7 +718,9 @@ const main = async () => {
       data: { lastSeenAt: subMinutes(new Date(), 3) },
     });
     const offline = await P.page
-      .locator('[data-candidate="student@example.com"][data-connection="offline"]')
+      .locator(
+        '[data-candidate="student@example.com"][data-connection="offline"]',
+      )
       .waitFor({ timeout: 15_000 })
       .then(() => true)
       .catch(() => false);
@@ -542,7 +746,11 @@ const main = async () => {
       [{ examId: ids.sync, message, priority: "important" }],
       ids.sync,
     );
-    check("examiner creates an announcement", created.ok === true, created.error);
+    check(
+      "examiner creates an announcement",
+      created.ok === true,
+      created.error,
+    );
     const shown = await sPage
       .getByText(message)
       .first()
@@ -550,7 +758,9 @@ const main = async () => {
       .then(() => true)
       .catch(() => false);
     check("announcement appears in the workspace within 25s", shown);
-    const row = await prisma.examAnnouncement.findFirstOrThrow({ where: { message } });
+    const row = await prisma.examAnnouncement.findFirstOrThrow({
+      where: { message },
+    });
     await sPage.getByRole("button", { name: "Dismiss announcement" }).click();
     const read = await until(
       async () =>
@@ -561,15 +771,22 @@ const main = async () => {
     );
     check("announcement read is stored", read);
 
-    const retract = await callAction(E.context, MONITOR, "retractAnnouncement", [row.id], ids.sync);
+    const retract = await callAction(
+      E.context,
+      MONITOR,
+      "retractAnnouncement",
+      [row.id],
+      ids.sync,
+    );
     check("announcement retracted", retract.ok === true, retract.error);
     await sPage.reload();
     await sPage.getByText("Question 1 of 4").waitFor();
     await sPage.waitForTimeout(1500);
     check(
       "retracted announcement disappears",
-      !(await sPage.getByRole("button", { name: /Announcements/ }).isVisible()) &&
-        (await sPage.getByText(message).count()) === 0,
+      !(await sPage
+        .getByRole("button", { name: /Announcements/ })
+        .isVisible()) && (await sPage.getByText(message).count()) === 0,
     );
   });
 
@@ -591,29 +808,53 @@ const main = async () => {
       ],
       ids.sync,
     );
-    const incident = await prisma.examIncident.findFirst({ where: { description } });
-    check("proctor records an incident", created.ok === true && !!incident, created.error);
+    const incident = await prisma.examIncident.findFirst({
+      where: { description },
+    });
+    check(
+      "proctor records an incident",
+      created.ok === true && !!incident,
+      created.error,
+    );
     const byProctor = await callAction(
       P.context,
       MONITOR,
       "updateIncidentStatus",
-      [{ incidentId: incident!.id, status: "resolved", resolutionNote: "Proctor tried" }],
+      [
+        {
+          incidentId: incident!.id,
+          status: "resolved",
+          resolutionNote: "Proctor tried",
+        },
+      ],
       ids.sync,
     );
-    const afterProctor = await prisma.examIncident.findUniqueOrThrow({ where: { id: incident!.id } });
+    const afterProctor = await prisma.examIncident.findUniqueOrThrow({
+      where: { id: incident!.id },
+    });
     check(
       "proctor cannot resolve an incident",
-      rejected(byProctor) && afterProctor.status === "open" && !afterProctor.resolvedAt,
+      rejected(byProctor) &&
+        afterProctor.status === "open" &&
+        !afterProctor.resolvedAt,
       byProctor.error,
     );
     const byOwner = await callAction(
       E.context,
       MONITOR,
       "updateIncidentStatus",
-      [{ incidentId: incident!.id, status: "resolved", resolutionNote: "Restarted browser; no concern" }],
+      [
+        {
+          incidentId: incident!.id,
+          status: "resolved",
+          resolutionNote: "Restarted browser; no concern",
+        },
+      ],
       ids.sync,
     );
-    const resolved = await prisma.examIncident.findUniqueOrThrow({ where: { id: incident!.id } });
+    const resolved = await prisma.examIncident.findUniqueOrThrow({
+      where: { id: incident!.id },
+    });
     check(
       "examiner resolves: resolvedById and resolvedAt stored",
       byOwner.ok === true &&
@@ -637,7 +878,9 @@ const main = async () => {
 
     // Web Locks can be shared across contexts of one browser, so the second
     // device runs in its own browser process.
-    const browserB = await chromium.launch({ channel: process.env.E2E_CHANNEL });
+    const browserB = await chromium.launch({
+      channel: process.env.E2E_CHANNEL,
+    });
     const deviceB = await cloneContext(browserB, S.context);
     const bPage = await deviceB.newPage();
     await bPage.goto(`/student/exams/${ids.sync}`);
@@ -648,10 +891,14 @@ const main = async () => {
     await textBox(sPage).fill("from-device-A");
     await until(
       async () =>
-        answerByOrder(await attemptFor(ids.sync, student.id), 3)?.text === "from-device-A",
+        answerByOrder(await attemptFor(ids.sync, student.id), 3)?.text ===
+        "from-device-A",
       15_000,
     );
-    const seqA = answerByOrder(await attemptFor(ids.sync, student.id), 3)!.clientSeq;
+    const seqA = answerByOrder(
+      await attemptFor(ids.sync, student.id),
+      3,
+    )!.clientSeq;
 
     await textBox(bPage).fill("from-device-B");
     const toast = await bPage
@@ -687,7 +934,8 @@ const main = async () => {
     }
     check(
       "timer never increases across resyncs (browser clock −5h)",
-      samples[0]! <= 30 * 60 && samples.every((s, i) => i === 0 || s <= samples[i - 1]!),
+      samples[0]! <= 30 * 60 &&
+        samples.every((s, i) => i === 0 || s <= samples[i - 1]!),
       samples.join(" → "),
     );
     await skewed.close();
@@ -698,6 +946,13 @@ const main = async () => {
     const page = await S.context.newPage();
     await page.goto(`/student/exams/${ids.deadline}`);
     await page.getByText("Question 1 of 4").waitFor();
+    const notes = page.getByRole("textbox", { name: "Notes" });
+    await page.locator("textarea:not(:disabled)").first().waitFor();
+    check(
+      "a different attempt starts with a separate scratchpad",
+      (await notes.inputValue()) === "",
+    );
+    await notes.fill("Deadline fixture scratchpad note");
     await page.getByRole("radio", { name: "const", exact: true }).check();
     await waitSaved(page);
     const attempt = await attemptFor(ids.deadline, student.id);
@@ -713,6 +968,34 @@ const main = async () => {
     await page.evaluate(() => window.dispatchEvent(new Event("online")));
     await page.waitForURL(/\/student\/results\//, { timeout: 30_000 });
     const after = await attemptFor(ids.deadline, student.id);
+    await page.waitForFunction(
+      (attemptId) =>
+        new Promise<boolean>((resolve) => {
+          const db = indexedDB.open("exam-scratchpad");
+          db.onerror = () => resolve(false);
+          db.onsuccess = () => {
+            const entry = db.result
+              .transaction("strokes")
+              .objectStore("strokes")
+              .get(attemptId);
+            entry.onsuccess = () => {
+              db.result.close();
+              resolve(!entry.result);
+            };
+            entry.onerror = () => {
+              db.result.close();
+              resolve(false);
+            };
+          };
+        }),
+      attempt!.id,
+    );
+    check(
+      "finalization clears scratchpad notes and keeps them out of submitted answers",
+      !after?.answers.some((answer) =>
+        answer.text?.includes("scratchpad note"),
+      ),
+    );
     check(
       "offline deadline: attempt finalised on reconnect",
       after?.status === "submitted" || after?.status === "graded",
@@ -733,7 +1016,9 @@ const main = async () => {
     "monitor payloads carry no answer keys or answer text",
     monitorScan.bodies.length > 0 &&
       !leaksKeys(monitorScan.bodies) &&
-      !monitorScan.bodies.some((b) => b.includes(SECRET) || b.includes("from-device-A")),
+      !monitorScan.bodies.some(
+        (b) => b.includes(SECRET) || b.includes("from-device-A"),
+      ),
     `${monitorScan.bodies.length} responses scanned`,
   );
 
@@ -751,10 +1036,15 @@ const main = async () => {
     await next(page, 4, 5);
     await textBox(page).fill("a queue");
     await next(page, 5, 5);
-    await textBox(page).fill("A closure keeps access to variables from the scope where it was created.");
+    await textBox(page).fill(
+      "A closure keeps access to variables from the scope where it was created.",
+    );
     await waitSaved(page);
     await page.getByRole("button", { name: "Review & submit" }).click();
-    await page.getByRole("dialog").getByRole("button", { name: "Submit examination" }).click();
+    await page
+      .getByRole("dialog")
+      .getByRole("button", { name: "Submit examination" })
+      .click();
 
     const resultScan = collector(page);
     await page.waitForURL(/\/student\/results\//, { timeout: 20_000 });
@@ -762,7 +1052,9 @@ const main = async () => {
     let attempt = await attemptFor(ids.grading, student.id);
     check(
       "submitted with a pending manual answer: status submitted, total null",
-      attempt?.status === "submitted" && attempt.totalScore === null && attempt.autoScore === 6,
+      attempt?.status === "submitted" &&
+        attempt.totalScore === null &&
+        attempt.autoScore === 6,
       `status ${attempt?.status}, auto ${attempt?.autoScore}, total ${attempt?.totalScore}`,
     );
     const body = await page.locator("main").innerText();
@@ -774,11 +1066,19 @@ const main = async () => {
     check(
       "unpublished result payload has no keys or scores",
       !leaksKeys(resultScan.bodies) &&
-        !resultScan.bodies.some((b) => /\\?"(autoScore|totalScore|score)\\?"\s*:\s*\d/.test(b)),
+        !resultScan.bodies.some((b) =>
+          /\\?"(autoScore|totalScore|score)\\?"\s*:\s*\d/.test(b),
+        ),
       `${resultScan.bodies.length} responses scanned`,
     );
 
-    const pending = await callAction(E.context, GRADING, "publishResults", [ids.grading], ids.grading);
+    const pending = await callAction(
+      E.context,
+      GRADING,
+      "publishResults",
+      [ids.grading],
+      ids.grading,
+    );
     check(
       "publish blocked while a manual mark is pending (with counts)",
       pending.ok === false && /1/.test(pending.error),
@@ -787,10 +1087,30 @@ const main = async () => {
 
     // Authorisation before marking.
     const longAnswer = answerByOrder(attempt, 4)!;
-    const gradeInput = [{ answerId: longAnswer.id, score: 4, feedback: "not allowed" }];
-    const byOther = await callAction(E2.context, GRADING, "saveManualGrade", gradeInput, ids.grading);
-    const byProctor = await callAction(P.context, GRADING, "saveManualGrade", gradeInput, ids.grading);
-    const publishByOther = await callAction(E2.context, GRADING, "publishResults", [ids.grading], ids.grading);
+    const gradeInput = [
+      { answerId: longAnswer.id, score: 4, feedback: "not allowed" },
+    ];
+    const byOther = await callAction(
+      E2.context,
+      GRADING,
+      "saveManualGrade",
+      gradeInput,
+      ids.grading,
+    );
+    const byProctor = await callAction(
+      P.context,
+      GRADING,
+      "saveManualGrade",
+      gradeInput,
+      ids.grading,
+    );
+    const publishByOther = await callAction(
+      E2.context,
+      GRADING,
+      "publishResults",
+      [ids.grading],
+      ids.grading,
+    );
     attempt = await attemptFor(ids.grading, student.id);
     check(
       "non-owner examiner cannot grade (action)",
@@ -812,7 +1132,8 @@ const main = async () => {
     await P.page.waitForLoadState("networkidle");
     check(
       "proctor cannot open grading (page)",
-      !P.page.url().includes("/grading") || !(await P.page.getByTestId("grading-progress").count()),
+      !P.page.url().includes("/grading") ||
+        !(await P.page.getByTestId("grading-progress").count()),
       P.page.url().replace(BASE, ""),
     );
 
@@ -821,13 +1142,20 @@ const main = async () => {
     await E.page.getByTestId("grading-progress").waitFor({ timeout: 15_000 });
     check(
       "grading queue lists the pending answer",
-      (await E.page.getByTestId("grading-progress").innerText()).includes("1 pending"),
+      (await E.page.getByTestId("grading-progress").innerText()).includes(
+        "1 pending",
+      ),
       await E.page.getByTestId("grading-progress").innerText(),
     );
     await E.page.locator("#grade-score").fill("3");
-    await E.page.locator("#grade-feedback").fill("Clear explanation of closures.");
+    await E.page
+      .locator("#grade-feedback")
+      .fill("Clear explanation of closures.");
     await E.page.getByRole("button", { name: /Save & next/ }).click();
-    await E.page.getByText(/0 pending/).first().waitFor({ timeout: 15_000 });
+    await E.page
+      .getByText(/0 pending/)
+      .first()
+      .waitFor({ timeout: 15_000 });
     attempt = await attemptFor(ids.grading, student.id);
     const gradeAudits = await prisma.gradeAudit.count({
       where: { examId: ids.grading, action: "grade" },
@@ -840,7 +1168,9 @@ const main = async () => {
         gradeAudits === 1,
       `status ${attempt?.status}, total ${attempt?.totalScore}, audits ${gradeAudits}`,
     );
-    const stillUnpublished = await prisma.exam.findUniqueOrThrow({ where: { id: ids.grading } });
+    const stillUnpublished = await prisma.exam.findUniqueOrThrow({
+      where: { id: ids.grading },
+    });
     check(
       "non-owner examiner cannot publish (action)",
       rejected(publishByOther) && !stillUnpublished.resultsPublishedAt,
@@ -857,7 +1187,9 @@ const main = async () => {
     );
     await confirm.getByRole("button", { name: "Publish to 1" }).click();
     await E.page.getByTestId("results-published").waitFor({ timeout: 15_000 });
-    const published = await prisma.exam.findUniqueOrThrow({ where: { id: ids.grading } });
+    const published = await prisma.exam.findUniqueOrThrow({
+      where: { id: ids.grading },
+    });
     check("results published", !!published.resultsPublishedAt);
 
     await page.goto(`/student/results/${attempt!.id}`);
@@ -871,14 +1203,26 @@ const main = async () => {
     );
     check(
       "score_only hides correct answers",
-      !text.includes("(Correct answer)") && text.includes("Correct answers are not"),
+      !text.includes("(Correct answer)") &&
+        text.includes("Correct answers are not"),
     );
 
     // Override is locked while published; unpublish → override → republish.
     const q1 = answerByOrder(attempt, 0)!;
-    const overrideInput = [{ answerId: q1.id, score: 1.5, reason: "Accept partial reasoning" }];
-    const locked = await callAction(E.context, GRADING, "overrideAutoScore", overrideInput, ids.grading);
-    const q1Locked = answerByOrder(await attemptFor(ids.grading, student.id), 0)!;
+    const overrideInput = [
+      { answerId: q1.id, score: 1.5, reason: "Accept partial reasoning" },
+    ];
+    const locked = await callAction(
+      E.context,
+      GRADING,
+      "overrideAutoScore",
+      overrideInput,
+      ids.grading,
+    );
+    const q1Locked = answerByOrder(
+      await attemptFor(ids.grading, student.id),
+      0,
+    )!;
     check(
       "override blocked while results are published",
       rejected(locked) && q1Locked.manualScore === null,
@@ -891,24 +1235,51 @@ const main = async () => {
       [{ examId: ids.grading, reason: "Re-check question 1" }],
       ids.grading,
     );
-    check("owner withdraws results with a reason", unpublish.ok === true, unpublish.error);
+    check(
+      "owner withdraws results with a reason",
+      unpublish.ok === true,
+      unpublish.error,
+    );
     const settings = await callAction(
       E.context,
       GRADING,
       "updateResultSettings",
-      [{ examId: ids.grading, resultReveal: "score_and_answers", passMarkPercent: 50 }],
+      [
+        {
+          examId: ids.grading,
+          resultReveal: "score_and_answers",
+          passMarkPercent: 50,
+        },
+      ],
       ids.grading,
     );
-    check("result visibility switched while unpublished", settings.ok === true, settings.error);
-    const override = await callAction(E.context, GRADING, "overrideAutoScore", overrideInput, ids.grading);
-    const republish = await callAction(E.context, GRADING, "publishResults", [ids.grading], ids.grading);
+    check(
+      "result visibility switched while unpublished",
+      settings.ok === true,
+      settings.error,
+    );
+    const override = await callAction(
+      E.context,
+      GRADING,
+      "overrideAutoScore",
+      overrideInput,
+      ids.grading,
+    );
+    const republish = await callAction(
+      E.context,
+      GRADING,
+      "publishResults",
+      [ids.grading],
+      ids.grading,
+    );
     attempt = await attemptFor(ids.grading, student.id);
     const audits = await prisma.gradeAudit.groupBy({
       by: ["action"],
       where: { examId: ids.grading },
       _count: true,
     });
-    const auditCount = (a: string) => audits.find((x) => x.action === a)?._count ?? 0;
+    const auditCount = (a: string) =>
+      audits.find((x) => x.action === a)?._count ?? 0;
     check(
       "override after unpublish: total updated, override + unpublish audited",
       override.ok === true &&
@@ -947,14 +1318,32 @@ const main = async () => {
       `mean ${stat("Mean (of 12)")}, median ${stat("Median")}, sd ${stat("Std deviation")}, pass ${stat("Pass rate (≥50%)")}`,
     );
 
-    const csv = await callAction(E.context, EXPORTS, "exportExamResultsAction", [ids.grading, "csv"], ids.grading);
+    const csv = await callAction(
+      E.context,
+      EXPORTS,
+      "exportExamResultsAction",
+      [ids.grading, "csv"],
+      ids.grading,
+    );
     check(
       "CSV export has the grading columns",
-      ["autoScore", "manualScore", "totalScore", "percentage", "status", "gradedAt", "submitSource"].every(
-        (c) => csv.body.includes(c),
-      ) && csv.body.includes("8.5"),
+      [
+        "autoScore",
+        "manualScore",
+        "totalScore",
+        "percentage",
+        "status",
+        "gradedAt",
+        "submitSource",
+      ].every((c) => csv.body.includes(c)) && csv.body.includes("8.5"),
     );
-    const csvOther = await callAction(E2.context, EXPORTS, "exportExamResultsAction", [ids.grading, "csv"], ids.grading);
+    const csvOther = await callAction(
+      E2.context,
+      EXPORTS,
+      "exportExamResultsAction",
+      [ids.grading, "csv"],
+      ids.grading,
+    );
     check(
       "non-owner examiner cannot export",
       !csvOther.body.includes("student@example.com"),
@@ -962,11 +1351,294 @@ const main = async () => {
     );
   });
 
+  await step(
+    "Phase 10 imports enforce roles, preview redaction and atomic writes",
+    async () => {
+      const topic = await prisma.topic.findFirstOrThrow({
+        select: { id: true },
+      });
+      const filename = "phase10-e2e-bank.csv";
+      const csv =
+        "text,type,options,answer,points,difficulty,TopicId\n" +
+        `${PHASE10_QUESTION},single_choice,"Phase 10 protected key\nIncorrect",Phase 10 protected key,1,easy,${topic.id}\n`;
+      const params = {
+        mode: "bank_questions",
+        format: "csv",
+        body: csv,
+        fileName: filename,
+        commit: false,
+      };
+      const preview = await callAction(
+        E.context,
+        EXPORTS,
+        "runTabularImport",
+        [params],
+        ids.grading,
+      );
+      check(
+        "examiner preview redacts the answer key",
+        preview.body.includes('"validCount":1') &&
+          !preview.body.includes("Phase 10 protected key"),
+      );
+      for (const actor of [S, P]) {
+        const response = await callAction(
+          actor.context,
+          EXPORTS,
+          "runTabularImport",
+          [{ ...params, commit: true }],
+          ids.grading,
+        );
+        check(
+          "student or proctor cannot run imports",
+          !response.body.includes('"created":1'),
+        );
+      }
+      const invalid = await callAction(
+        E.context,
+        EXPORTS,
+        "runTabularImport",
+        [
+          {
+            ...params,
+            body: csv + 'Invalid,single_choice,"A\nB",C,1,easy,missing\n',
+            commit: true,
+          },
+        ],
+        ids.grading,
+      );
+      check(
+        "invalid rows reject the entire bank import",
+        invalid.body.includes('"failed":1') &&
+          (await prisma.bankQuestion.count({
+            where: { text: PHASE10_QUESTION },
+          })) === 0,
+      );
+      const first = await callAction(
+        E.context,
+        EXPORTS,
+        "runTabularImport",
+        [{ ...params, commit: true }],
+        ids.grading,
+      );
+      const again = await callAction(
+        E.context,
+        EXPORTS,
+        "runTabularImport",
+        [{ ...params, commit: true }],
+        ids.grading,
+      );
+      check(
+        "bank import creates once and skips duplicates",
+        first.body.includes('"created":1') &&
+          again.body.includes('"skipped":1') &&
+          (await prisma.bankQuestion.count({
+            where: { text: PHASE10_QUESTION },
+          })) === 1,
+      );
+
+      const password = "Phase10-test-password";
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(
+        workbook,
+        XLSX.utils.aoa_to_sheet([
+          ["Name", "Email", "Password", "Role"],
+          [`${PREFIX} Imported Candidate`, PHASE10_EMAIL, password, "student"],
+        ]),
+        "Candidates",
+      );
+      const body = XLSX.write(workbook, {
+        type: "base64",
+        bookType: "xlsx",
+      }) as string;
+      const candidateParams = {
+        mode: "candidates",
+        format: "xlsx",
+        body,
+        fileName: "phase10-e2e-candidates.xlsx",
+        commit: false,
+      };
+      const denied = await callAction(
+        E.context,
+        EXPORTS,
+        "runTabularImport",
+        [{ ...candidateParams, commit: true }],
+        ids.grading,
+      );
+      const candidatePreview = await callAction(
+        A.context,
+        EXPORTS,
+        "runTabularImport",
+        [candidateParams],
+        ids.grading,
+      );
+      const imported = await callAction(
+        A.context,
+        EXPORTS,
+        "runTabularImport",
+        [{ ...candidateParams, commit: true }],
+        ids.grading,
+      );
+      const candidate = await prisma.user.findUnique({
+        where: { email: PHASE10_EMAIL },
+        include: { accounts: true },
+      });
+      check(
+        "admin XLSX import creates only student accounts and previews omit passwords",
+        !denied.body.includes('"created":1') &&
+          candidatePreview.body.includes('"validCount":1') &&
+          !candidatePreview.body.includes(password) &&
+          imported.body.includes('"created":1') &&
+          candidate?.role === "student" &&
+          candidate.accounts[0]?.password !== password,
+      );
+    },
+  );
+
+  await step(
+    "Phase 10 PDF publication, anonymity, integrity and analytics access",
+    async () => {
+      const attempt = await attemptFor(ids.grading, student.id);
+      if (!attempt) throw new Error("Missing graded attempt");
+      const reportPath = `/examiner/results/${attempt.id}`;
+      await E.page.goto(reportPath);
+      const publish = E.page.getByRole("button", {
+        name: "Publish verifiable result PDF",
+      });
+      await publish.click();
+      const downloadLink = E.page.getByRole("link", { name: "Download PDF" });
+      await downloadLink.waitFor();
+      const [download] = await Promise.all([
+        E.page.waitForEvent("download"),
+        downloadLink.click(),
+      ]);
+      const bytes = readFileSync((await download.path())!);
+      const verify = E.page.getByRole("link", { name: "Verify report" });
+      const first = await verify.getAttribute("href");
+      await publish.click();
+      await E.page
+        .getByRole("button", { name: "Publish verifiable result PDF" })
+        .waitFor();
+      check(
+        "candidate PDF is valid and duplicate publication preserves one URL",
+        bytes.subarray(0, 5).toString() === "%PDF-" &&
+          first === (await verify.getAttribute("href")) &&
+          (await prisma.reportVerification.count({
+            where: { attemptId: attempt.id, revokedAt: null },
+          })) === 1,
+      );
+      const verifier = await browser.newPage();
+      await verifier.goto(first!);
+      await verifier
+        .getByRole("heading", { name: "Report verified" })
+        .waitFor();
+      const file = verifier.getByLabel("Check a PDF for changes");
+      await file.setInputFiles({
+        name: "original.pdf",
+        mimeType: "application/pdf",
+        buffer: bytes,
+      });
+      await verifier
+        .getByText("Integrity confirmed.", { exact: false })
+        .waitFor();
+      await file.setInputFiles({
+        name: "altered.pdf",
+        mimeType: "application/pdf",
+        buffer: Buffer.concat([bytes, Buffer.from("changed")]),
+      });
+      await verifier
+        .getByText("Integrity check failed.", { exact: false })
+        .waitFor();
+      check(
+        "public verification confirms original bytes and rejects changed bytes without candidate identification",
+        !(await verifier.locator("main").innerText()).includes(student.name),
+      );
+      await verifier.close();
+
+      await E.page.goto(`/examiner/exams/${ids.grading}/results`);
+      await E.page
+        .getByRole("button", { name: "Publish examination summary PDF" })
+        .click();
+      await E.page.getByRole("link", { name: "Download PDF" }).waitFor();
+      check(
+        "owning examiner can generate a summary PDF",
+        (await prisma.reportVerification.count({
+          where: { examId: ids.grading, type: "exam_summary" },
+        })) === 1,
+      );
+      const other = await callAction(
+        E2.context,
+        REPORTS,
+        "publishCandidateResultReport",
+        [attempt.id],
+        attempt.id,
+      );
+      const proctor = await callAction(
+        P.context,
+        ANALYTICS,
+        "loadExamAnalytics",
+        [ids.grading],
+        ids.grading,
+      );
+      const unrelated = await callAction(
+        E2.context,
+        ANALYTICS,
+        "loadExamAnalytics",
+        [ids.grading],
+        ids.grading,
+      );
+      const admin = await callAction(
+        A.context,
+        ANALYTICS,
+        "loadExamAnalytics",
+        [ids.grading],
+        ids.grading,
+      );
+      const own = await callAction(
+        S.context,
+        REPORTS,
+        "downloadOwnResultReport",
+        [attempt.id],
+        attempt.id,
+      );
+      const candidate = await prisma.user.findUniqueOrThrow({
+        where: { email: PHASE10_EMAIL },
+      });
+      const otherAttempt = await prisma.examAttempt.create({
+        data: {
+          examId: ids.grading,
+          userId: candidate.id,
+          status: "graded",
+          totalScore: 1,
+          maxScore: 12,
+        },
+      });
+      const denied = await callAction(
+        S.context,
+        REPORTS,
+        "downloadOwnResultReport",
+        [otherAttempt.id],
+        otherAttempt.id,
+      );
+      check(
+        "reports and analytics enforce independent ownership and role gates",
+        !other.body.includes("pdfBase64") &&
+          !proctor.body.includes('"examTitle"') &&
+          !unrelated.body.includes('"examTitle"') &&
+          admin.body.includes('"examTitle"') &&
+          own.body.includes("pdfBase64") &&
+          !denied.body.includes("pdfBase64"),
+      );
+      await prisma.examAttempt.delete({ where: { id: otherAttempt.id } });
+    },
+  );
+
   await browser.close();
   await cleanFixtures();
 
   const failed = results.filter((r) => !r.ok);
-  console.log(`\n${results.length - failed.length}/${results.length} checks passed`);
+  console.log(
+    `\n${results.length - failed.length}/${results.length} checks passed`,
+  );
   for (const f of failed) console.log(`FAILED: ${f.name} ${f.detail}`);
   await prisma.$disconnect();
   process.exit(failed.length ? 1 : 0);

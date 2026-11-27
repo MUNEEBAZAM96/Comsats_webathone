@@ -6,6 +6,7 @@ interface ScratchpadDB extends DBSchema {
     value: {
       attemptId: string;
       strokesJson: string;
+      notes?: string;
       updatedAt: number;
     };
   };
@@ -24,11 +25,16 @@ const getDb = () => {
   return dbPromise;
 };
 
-export const saveScratchpad = async (attemptId: string, strokesJson: string) => {
+export const saveScratchpad = async (
+  attemptId: string,
+  strokesJson: string,
+  notes = "",
+) => {
   const db = await getDb();
   await db.put("strokes", {
     attemptId,
     strokesJson,
+    notes,
     updatedAt: Date.now(),
   });
 };

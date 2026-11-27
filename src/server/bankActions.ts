@@ -7,10 +7,7 @@ import { auth } from "@/lib/auth";
 import prisma from "@/lib/database/dbClient";
 import { refreshExamTotalMarks } from "@/lib/exam/lifecycle";
 import { buildQuestionGradingFields } from "@/lib/exam/markingScheme";
-import {
-  bankQuestionFormSchema,
-  randomImportSchema,
-} from "@/lib/zodSchema";
+import { bankQuestionFormSchema, randomImportSchema } from "@/lib/zodSchema";
 import { Prisma } from "@generated/prisma/client";
 
 const requireExaminer = async () => {
@@ -524,6 +521,7 @@ export const importBankQuestions = async (
 
     const bankQuestions = await prisma.bankQuestion.findMany({
       where: { id: { in: questionIds } },
+      include: { topic: { include: { subject: { select: { name: true } } } } },
     });
 
     let lastError: Error | null = null;
@@ -549,6 +547,8 @@ export const importBankQuestions = async (
                 points: q.points,
                 difficulty: q.difficulty,
                 markingScheme: q.markingScheme,
+                topicName: q.topic.name,
+                subjectName: q.topic.subject.name,
                 order: order++,
               })),
             });
@@ -615,9 +615,7 @@ export const importRandomBankQuestions = async (
     if (parsed.topicId)
       conditions.push(Prisma.sql`bq."topicId" = ${parsed.topicId}`);
     if (parsed.subjectId)
-      conditions.push(
-        Prisma.sql`t."subjectId" = ${parsed.subjectId}`,
-      );
+      conditions.push(Prisma.sql`t."subjectId" = ${parsed.subjectId}`);
     if (parsed.difficulty)
       conditions.push(Prisma.sql`bq."difficulty" = ${parsed.difficulty}`);
     if (parsed.type) conditions.push(Prisma.sql`bq."type" = ${parsed.type}`);
@@ -633,9 +631,9 @@ export const importRandomBankQuestions = async (
     )`);
 
     const whereSql =
-      conditions.length > 0 ?
-        Prisma.sql`WHERE ${Prisma.join(conditions, " AND ")}`
-      : Prisma.empty;
+      conditions.length > 0
+        ? Prisma.sql`WHERE ${Prisma.join(conditions, " AND ")}`
+        : Prisma.empty;
 
     const rows = await prisma.$queryRaw<{ id: string }[]>`
       SELECT bq."id"

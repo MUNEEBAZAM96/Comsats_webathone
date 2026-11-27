@@ -4,6 +4,7 @@ import { CircleAlertIcon, InfoIcon, ShieldCheckIcon } from "lucide-react";
 import { BrandMark } from "@/components/BrandMark";
 import ThemeToggleButton from "@/components/ThemeToggleButton";
 import { RouteLoading } from "@/components/Loading/RouteLoading";
+import { PdfIntegrityCheck } from "@/features/verification/components/PdfIntegrityCheck";
 import { formatDisplayDateTime } from "@/lib/date/format";
 import { verifyPublishedReport } from "@/server/verifyReport";
 
@@ -37,73 +38,81 @@ const VerifyReportContent = async ({
   params: Promise<{ reportId: string }>;
 }) => {
   const { reportId } = await params;
-  const result = await verifyPublishedReport(reportId);
+  const result = await verifyPublishedReport(reportId).catch(() => ({
+    status: "unavailable" as const,
+    message: "Verification is temporarily unavailable. Try again later.",
+  }));
 
   const tone =
-    result.status === "valid" ? "bg-success-surface text-success"
-    : result.status === "invalid" ? "bg-error-surface text-destructive"
-    : "bg-info-surface text-info";
+    result.status === "valid"
+      ? "bg-success-surface text-success"
+      : result.status === "invalid"
+        ? "bg-error-surface text-destructive"
+        : "bg-info-surface text-info";
   const StatusIcon =
-    result.status === "valid" ? ShieldCheckIcon
-    : result.status === "invalid" ? CircleAlertIcon
-    : InfoIcon;
+    result.status === "valid"
+      ? ShieldCheckIcon
+      : result.status === "invalid"
+        ? CircleAlertIcon
+        : InfoIcon;
 
   const metaEntries =
-    "publicMeta" in result && result.publicMeta ?
-      publicMetaKeys.flatMap((key) => {
-        const value = result.publicMeta?.[key];
-        if (value === undefined || value === null) return [];
-        return [[key, value] as const];
-      })
-    : [];
+    "publicMeta" in result && result.publicMeta
+      ? publicMetaKeys.flatMap((key) => {
+          const value = result.publicMeta?.[key];
+          if (value === undefined || value === null) return [];
+          return [[key, value] as const];
+        })
+      : [];
 
   return (
     <section className="status-panel grid w-full gap-6 rounded-2xl border bg-card p-5 sm:p-8">
       <div className="grid gap-3">
         <span className={`status-icon ${tone}`}>
-          <StatusIcon
-            aria-hidden="true"
-            className="size-6"
-          />
+          <StatusIcon aria-hidden="true" className="size-6" />
         </span>
         <p className="font-medium text-sm text-muted-foreground">
           Report verification
         </p>
         <h1>
-          {result.status === "valid" ?
-            "Report verified"
-          : result.status === "invalid" ?
-            "Report could not be verified"
-          : "Report unavailable"}
+          {result.status === "valid"
+            ? "Report verified"
+            : result.status === "invalid"
+              ? "Report could not be verified"
+              : "Report unavailable"}
         </h1>
         <p className="text-muted-foreground text-sm">{result.message}</p>
+        <p className="break-all text-sm">Report identifier {reportId}</p>
       </div>
 
-      {metaEntries.length > 0 ?
+      {metaEntries.length > 0 ? (
         <dl className="grid divide-y rounded-xl border bg-muted/40 px-4 text-sm">
           {metaEntries.map(([key, value]) => (
             <div
               key={key}
-              className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.25fr)] gap-3 py-3">
+              className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.25fr)] gap-3 py-3"
+            >
               <dt className="text-muted-foreground">{publicMetaLabels[key]}</dt>
               <dd className="font-medium break-all">
-                {typeof value === "string" || typeof value === "number" ?
-                  String(value)
-                : JSON.stringify(value)}
+                {typeof value === "string" || typeof value === "number"
+                  ? key === "publishedAt" || key === "submittedAt"
+                    ? formatDisplayDateTime(String(value))
+                    : String(value)
+                  : JSON.stringify(value)}
               </dd>
             </div>
           ))}
-          {"publishedAt" in result && result.publishedAt ?
-            <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.25fr)] gap-3 py-3">
-              <dt className="text-muted-foreground">Verified against</dt>
-              <dd className="font-medium">
-                {formatDisplayDateTime(result.publishedAt)}
-              </dd>
-            </div>
-          : null}
         </dl>
-      : null}
+      ) : null}
 
+      {result.status === "valid" &&
+        (result.pdfHash ? (
+          <PdfIntegrityCheck expectedHash={result.pdfHash} />
+        ) : (
+          <p className="text-muted-foreground text-sm">
+            This report predates PDF file integrity checks.
+          </p>
+        ))}
       <p className="text-muted-foreground text-xs">
         Candidate personal details and answers are never shown on this page.
       </p>

@@ -287,7 +287,7 @@ Work through phases in order, reusing existing implementations and validating ea
 
 Implemented: IndexedDB-first answer storage with per-question sequence numbers and idempotency keys, a batched sync queue with jittered backoff, server-side conflict rules (higher sequence wins; stale writes return the server copy), heartbeat with server time, a countdown-only timer, single-tab guard, attempt events, and finalisation that drops writes after the server deadline. Covered by `scripts/test-sync-queue.ts` and `scripts/e2e-phase07-09.ts` (offline recovery, aborted saves, second device conflict, offline deadline, skewed clock).
 
-Known limit: there is no service worker, so a page reload while fully offline cannot load; answers survive closing the tab and are recovered on the next online load.
+A fully offline reload opens a read-only recovery page for pending drafts in the current tab. Reconnect to resume answering while the server-controlled attempt is active.
 
 **Deliverable:** Recoverable examination workflow under network interruptions without extending examination time.
 
@@ -305,18 +305,13 @@ Known limit: there is no service worker, so a page reload while fully offline ca
 
 ### Phase 10 — Secondary Features
 
-**Done (integrated, not placeholders):**
+Candidates can open an ungraded practice exam, set local workspace preferences, and keep private notes and drawings per attempt. The examination workspace queues edits in IndexedDB. If a candidate reloads offline, a recovery page shows pending drafts from the current tab. Reconnection restores the workspace while the attempt is active. The server rejects late writes and keeps its copy when an edit's sequence is equal to or lower than its saved version.
 
-1. Network-aware exam UI / sync status
-2. PDF report generation
-3. Examination scratchpad / workspace customization hooks
-4. Bulk candidate and question import (CSV + XLSX)
-5. Question / exam analytics (`recharts`)
-6. Verifiable reports (SHA-256 + QR + `/verify/[reportId]`)
-7. Customizable exam player chrome (scratchpad, offline banner)
-8. Digital scratchpad
+Admin can bulk-import candidates. Admin and examiners can import bank questions. CSV and XLSX previews show validation errors and duplicates without returning credentials or answer keys. Imports with invalid rows are rejected as a unit. Candidate files are limited to 100 rows, question files to 2,000 rows, and both to 2 MB.
 
-**Deliverable:** Working secondary functionality. Continue hardening under Phase 11.
+Released candidate results and examination summaries can be rendered as PDFs. Staff-issued reports include a QR verification link and a SHA-256 digest for checking the issued file in the browser. Candidate names stay in authorized PDF views. Staff analytics include response counts, correct rates, skips, average scores, and topic, subject and difficulty performance. Older exam copies without taxonomy are shown as unclassified.
+
+Phase 10 adds the `20261128120000_phase_ten_reports_and_taxonomy` migration and uses the existing database and Better Auth configuration. Set `BETTER_AUTH_URL` to the canonical HTTPS production origin so report QR links reach the deployment. Apply the migration before starting the updated app, after checking the target database's migration history. PDFs render in the Node.js server runtime and the browser checks file integrity over HTTPS or localhost.
 
 ### Phase 11 — Security and Testing
 

@@ -18,17 +18,23 @@ import {
 } from "@/features/exam-workspace/offline/connectivity";
 import { createEventBuffer } from "@/features/exam-workspace/offline/eventBuffer";
 import { useAttemptTabGuard } from "@/features/exam-workspace/offline/multiTab";
+import {
+  clearOfflineRecovery,
+  enableOfflineRecovery,
+} from "@/features/exam-workspace/offline/recovery";
 import { createAnswerSyncQueue } from "@/features/exam-workspace/offline/sync-manager";
 import type { LocalAnswer } from "@/features/exam-workspace/offline/types";
 import {
   clearReviewFlags,
   useReviewFlags,
 } from "@/features/exam-workspace/reviewFlags";
-import { DigitalScratchpad } from "@/features/scratchpad/components/DigitalScratchpad";
 import {
-  MAX_FINAL_ITEMS,
-  type StudentAnnouncement,
-} from "@/lib/exam/syncSchemas";
+  WorkspaceSettings,
+  useWorkspacePreferences,
+} from "@/features/exam-workspace/components/WorkspaceSettings";
+import { clearScratchpad } from "@/features/scratchpad/services/scratchpadDb";
+import { DigitalScratchpad } from "@/features/scratchpad/components/DigitalScratchpad";
+import type { StudentAnnouncement } from "@/lib/exam/syncSchemas";
 import { cn } from "@/lib/utils";
 import {
   heartbeat,
@@ -96,12 +102,17 @@ type Question = {
 
 type ExamPlayerProps = {
   attemptId: string;
+  examId: string;
   examTitle: string;
   instructions?: string | null;
   /** Remaining time computed on the server at render. */
   initialRemainingMs: number;
   questions: Question[];
-  savedAnswers: { questionId: string; text: string | null; clientSeq: number }[];
+  savedAnswers: {
+    questionId: string;
+    text: string | null;
+    clientSeq: number;
+  }[];
   initialAnnouncements: StudentAnnouncement[];
 };
 
@@ -117,8 +128,8 @@ const formatTime = (seconds: number) => {
   const hours = Math.floor(seconds / 3600);
   const minutes = Math.floor((seconds % 3600) / 60);
   const secs = (seconds % 60).toString().padStart(2, "0");
-  return hours > 0 ?
-      `${hours}:${minutes.toString().padStart(2, "0")}:${secs}`
+  return hours > 0
+    ? `${hours}:${minutes.toString().padStart(2, "0")}:${secs}`
     : `${minutes.toString().padStart(2, "0")}:${secs}`;
 };
 
@@ -126,6 +137,7 @@ const isAnsweredText = (text: string | undefined) => Boolean(text?.trim());
 
 export const ExamPlayer = ({
   attemptId,
+  examId,
   examTitle,
   instructions,
   initialRemainingMs,
@@ -152,6 +164,7 @@ export const ExamPlayer = ({
   const [announcements, setAnnouncements] = useState(initialAnnouncements);
 
   const router = useRouter();
+  const preferences = useWorkspacePreferences();
   const online = useOnlineStatus();
   const questionIds = useMemo(() => questions.map((q) => q.id), [questions]);
   const { flagged, toggle: toggleFlag } = useReviewFlags(
@@ -186,6 +199,9 @@ export const ExamPlayer = ({
       awaitPrime: true,
     }),
   );
+  useEffect(() => {
+    enableOfflineRecovery(examId, attemptId, questionIds);
+  }, [examId, attemptId, questionIds]);
   const sync = useSyncExternalStore(
     queue.subscribe,
     queue.getSnapshot,
@@ -200,11 +216,14 @@ export const ExamPlayer = ({
   const unsynced = new Set(sync.pendingQuestionIds);
   const currentFlagged =
     currentQuestion && flagged.includes(currentQuestion.id);
-  const locked = timeLeft === 0 || submitting || readOnly;
+  const locked =
+    timeLeft === 0 || submitting || readOnly || sync.state === "restoring";
   const latestUnread = announcements.find((a) => !a.read);
 
   const goToResult = useCallback(() => {
     clearReviewFlags(attemptId);
+    clearOfflineRecovery(attemptId);
+    void clearScratchpad(attemptId).catch(() => undefined);
     router.replace(`/student/results/${attemptId}` as Route);
   }, [attemptId, router]);
 
@@ -212,6 +231,10 @@ export const ExamPlayer = ({
   const leaveFinishedAttempt = useCallback(() => {
     if (submittingRef.current) return;
     submittingRef.current = true;
+    if (queue.getSnapshot().pendingCount > 0)
+      toast.warning(
+        "The attempt ended before all local answers reached the server.",
+      );
     queue.markClosed("already_submitted");
     void clearAttemptAnswers(attemptId).catch(() => undefined);
     goToResult();
@@ -226,14 +249,24 @@ export const ExamPlayer = ({
       setSubmitError("");
       try {
         await queue.whenIdle();
-        // After the deadline the server rejects writes anyway; before it,
-        // drain the queue so submission carries as little as possible.
-        if (!expired) await queue.flushAll();
-        const finalItems = queue.getPendingItems().slice(0, MAX_FINAL_ITEMS);
+        // Manual submission requires acknowledgement for every local edit.
+        if (!expired && !(await queue.flushAll())) {
+          setSubmitError(
+            "Some answers are waiting to sync. Reconnect or retry synchronization before submitting.",
+          );
+          setSubmitting(false);
+          submittingRef.current = false;
+          return;
+        }
+        const expiredWithLocalAnswers =
+          expired && queue.getSnapshot().pendingCount > 0;
         await submitExam(attemptId, {
           source: expired ? "timer" : "manual",
-          ...(finalItems.length > 0 ? { finalItems } : {}),
         });
+        if (expiredWithLocalAnswers)
+          toast.warning(
+            "Time expired before all local answers reached the server.",
+          );
         queue.markClosed("already_submitted");
         try {
           await clearAttemptAnswers(attemptId);
@@ -243,9 +276,9 @@ export const ExamPlayer = ({
         goToResult();
       } catch {
         setSubmitError(
-          expired ?
-            "Time is up, but submission could not be confirmed. Answers the server already received are kept — retry to finish."
-          : "Submission could not be confirmed. Check your connection and try again.",
+          expired
+            ? "Time is up, but submission could not be confirmed. Answers the server already received are kept — retry to finish."
+            : "Submission could not be confirmed. Check your connection and try again.",
         );
         setSubmitting(false);
         setAutoSubmitting(false);
@@ -303,25 +336,36 @@ export const ExamPlayer = ({
     const known = new Set(questionIds);
     const restore = async () => {
       let recovered: LocalAnswer[] = [];
+      let conflicts = 0;
+      let storageAvailable = true;
       try {
-        recovered = (await seedSeqFromServer(attemptId, server)).filter((r) =>
-          known.has(r.questionId),
-        );
+        recovered = (
+          await seedSeqFromServer(attemptId, server, (count) => {
+            conflicts = count;
+          })
+        ).filter((r) => known.has(r.questionId));
       } catch {
-        recovered = [];
+        storageAvailable = false;
       }
       if (cancelled) return;
-      const accepted = queue.prime({ server, recovered });
+      const accepted = queue.prime({
+        server,
+        recovered,
+        conflicts,
+        storageAvailable,
+      });
       if (accepted.length > 0) {
         const next = { ...answersRef.current };
         for (const row of accepted) next[row.questionId] = row.text;
         answersRef.current = next;
         setAnswers(next);
         setRecoveredCount(accepted.length);
-        void queue.flush();
       }
+      void queue.flush();
       if (server.length > 0 || accepted.length > 0)
-        void events.push("resumed_after_refresh", { recovered: accepted.length });
+        void events.push("resumed_after_refresh", {
+          recovered: accepted.length,
+        });
     };
     void restore();
     return () => {
@@ -351,7 +395,7 @@ export const ExamPlayer = ({
       }
       if (seconds === 0) {
         window.clearInterval(interval);
-        void finalizeRef.current(true);
+        if (navigator.onLine) void finalizeRef.current(true);
       }
     };
     const interval = window.setInterval(tick, 250);
@@ -365,9 +409,12 @@ export const ExamPlayer = ({
       seenAnnouncementsRef.current.add(a.id);
       if (a.read) continue;
       const notify = a.priority === "urgent" ? toast.error : toast.info;
-      notify(a.priority === "urgent" ? "Urgent announcement" : "New announcement", {
-        description: a.message,
-      });
+      notify(
+        a.priority === "urgent" ? "Urgent announcement" : "New announcement",
+        {
+          description: a.message,
+        },
+      );
     }
     setAnnouncements(
       list.map((a) =>
@@ -382,8 +429,9 @@ export const ExamPlayer = ({
     let cancelled = false;
     let running = false;
     const beat = async () => {
-      if (running || submittingRef.current) return;
+      if (running || submittingRef.current || !navigator.onLine) return;
       running = true;
+      const requestStartedAt = performance.now();
       try {
         const res = await heartbeat({
           attemptId,
@@ -404,7 +452,7 @@ export const ExamPlayer = ({
           leaveFinishedAttempt();
           return;
         }
-        const serverDeadline = performance.now() + res.remainingMs;
+        const serverDeadline = requestStartedAt + res.remainingMs;
         deadlinePerfRef.current = Math.min(
           deadlinePerfRef.current ?? serverDeadline,
           serverDeadline,
@@ -426,7 +474,7 @@ export const ExamPlayer = ({
     const onWake = () => {
       if (document.visibilityState !== "visible") return;
       void beat();
-      void queue.retryNow();
+      void queue.flush();
     };
     const interval = window.setInterval(() => void beat(), HEARTBEAT_MS);
     void beat();
@@ -460,7 +508,8 @@ export const ExamPlayer = ({
       );
     };
     const onBlur = () => {
-      if (submittingRef.current || document.visibilityState !== "visible") return;
+      if (submittingRef.current || document.visibilityState !== "visible")
+        return;
       const t = performance.now();
       if (t - lastBlur < BLUR_THROTTLE_MS) return;
       lastBlur = t;
@@ -495,12 +544,12 @@ export const ExamPlayer = ({
 
   // Time ran out while offline: finish as soon as the connection is back.
   useEffect(() => {
-    if (online && timeLeft === 0 && submitError && !submittingRef.current)
+    if (online && timeLeft === 0 && !submittingRef.current)
       void finalizeRef.current(true);
-  }, [online, timeLeft, submitError]);
+  }, [online, timeLeft]);
 
   // Without IndexedDB the only copy of unsent answers is this page.
-  const unsafeToLeave = sync.pendingCount > 0 && !sync.storageAvailable;
+  const unsafeToLeave = sync.pendingCount > 0 && !sync.locallyQueued;
   useEffect(() => {
     if (!unsafeToLeave) return;
     const warn = (e: BeforeUnloadEvent) => e.preventDefault();
@@ -535,10 +584,13 @@ export const ExamPlayer = ({
   };
 
   const deadlineLabel =
-    timeLeft === 0 ? "Time expired"
-    : timeLeft <= 60 ? "Final minute"
-    : timeLeft <= 300 ? "Five minutes or less"
-    : "Time remaining";
+    timeLeft === 0
+      ? "Time expired"
+      : timeLeft <= 60
+        ? "Final minute"
+        : timeLeft <= 300
+          ? "Five minutes or less"
+          : "Time remaining";
   const deadlineRisk =
     timeLeft > 0 &&
     timeLeft <= DEADLINE_RISK_SECONDS &&
@@ -551,7 +603,8 @@ export const ExamPlayer = ({
   const questionNavigation = (
     <nav
       aria-label="Question navigation"
-      className="grid grid-cols-[repeat(auto-fill,minmax(2.75rem,1fr))] gap-2">
+      className="grid grid-cols-[repeat(auto-fill,minmax(2.75rem,1fr))] gap-2"
+    >
       {questions.map((question, index) => {
         const isAnswered = isAnsweredText(answers[question.id]);
         const isFlagged = flagged.includes(question.id);
@@ -611,12 +664,9 @@ export const ExamPlayer = ({
               <Dialog>
                 <DialogTrigger
                   render={
-                    <Button
-                      variant="outline"
-                      size="lg"
-                      className="shrink-0"
-                    />
-                  }>
+                    <Button variant="outline" size="lg" className="shrink-0" />
+                  }
+                >
                   <InfoIcon aria-hidden="true" />
                   <span className="hidden sm:inline">Instructions</span>
                   <span className="sr-only sm:hidden">Instructions</span>
@@ -642,24 +692,26 @@ export const ExamPlayer = ({
           <div
             className={cn(
               "flex min-w-28 shrink-0 items-center gap-2 rounded-md px-2.5 py-1.5 sm:px-3",
-              timeLeft <= 60 ? "bg-error-surface text-destructive"
-              : timeLeft <= 300 ? "bg-warning-surface text-warning"
-              : "bg-secondary text-secondary-foreground",
-            )}>
-            <ClockIcon
-              aria-hidden="true"
-              className="size-4"
-            />
+              timeLeft <= 60
+                ? "bg-error-surface text-destructive"
+                : timeLeft <= 300
+                  ? "bg-warning-surface text-warning"
+                  : "bg-secondary text-secondary-foreground",
+            )}
+          >
+            <ClockIcon aria-hidden="true" className="size-4" />
             <div className="grid gap-0.5">
               <span
                 role="status"
-                className="text-[11px] leading-tight font-medium">
+                className="text-[11px] leading-tight font-medium"
+              >
                 {deadlineLabel}
               </span>
               <span
                 role="timer"
                 aria-label="Time remaining"
-                className="font-mono text-xl leading-none font-semibold tabular-nums">
+                className="font-mono text-xl leading-none font-semibold tabular-nums"
+              >
                 {formatTime(timeLeft)}
               </span>
             </div>
@@ -667,13 +719,29 @@ export const ExamPlayer = ({
         </div>
       </header>
 
-      <div className="mx-auto grid w-full max-w-[80rem] content-start gap-5 px-4 py-5 sm:px-6 md:grid-cols-[minmax(0,1fr)_13rem] lg:grid-cols-[minmax(0,1fr)_17rem] lg:gap-8 lg:px-8 lg:py-8">
-        <div className="grid min-w-0 content-start gap-5">
+      <div
+        className={cn(
+          "mx-auto grid w-full max-w-[80rem] content-start gap-5 px-4 py-5 sm:px-6 lg:px-8",
+          preferences.navigation === "sidebar" &&
+            "md:grid-cols-[minmax(0,1fr)_13rem] lg:grid-cols-[minmax(0,1fr)_17rem]",
+          preferences.density === "comfortable" && "lg:gap-8 lg:py-8",
+        )}
+      >
+        <div
+          className={cn(
+            "grid min-w-0 content-start",
+            preferences.density === "compact" ? "gap-3" : "gap-5",
+          )}
+        >
+          <WorkspaceSettings preferences={preferences} />
+          {preferences.instructions && instructions?.trim() && (
+            <p className="whitespace-pre-wrap rounded-lg border bg-card p-4">
+              {instructions}
+            </p>
+          )}
           <div className="grid gap-2.5">
             <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
-              <span
-                id="question-progress"
-                className="font-semibold">
+              <span id="question-progress" className="font-semibold">
                 {answered} of {questions.length} answered
               </span>
               <SyncStatusIndicator
@@ -692,21 +760,20 @@ export const ExamPlayer = ({
           {readOnly && (
             <div
               role="alert"
-              className="bg-warning-surface text-warning flex flex-wrap items-center gap-3 rounded-md px-4 py-3 text-sm">
-              <CopyIcon
-                aria-hidden="true"
-                className="size-4 shrink-0"
-              />
+              className="bg-warning-surface text-warning flex flex-wrap items-center gap-3 rounded-md px-4 py-3 text-sm"
+            >
+              <CopyIcon aria-hidden="true" className="size-4 shrink-0" />
               <p className="min-w-0 flex-1">
-                {tabRole === "taken_over" ?
-                  "This exam was opened in another tab, so editing is paused here."
-                : "This exam is already open in another tab. Editing is paused here to avoid conflicting answers."}
+                {tabRole === "taken_over"
+                  ? "This exam was opened in another tab, so editing is paused here."
+                  : "This exam is already open in another tab. Editing is paused here to avoid conflicting answers."}
               </p>
               <Button
                 type="button"
                 variant="outline"
                 size="lg"
-                onClick={takeOver}>
+                onClick={takeOver}
+              >
                 Use this tab instead
               </Button>
             </div>
@@ -715,11 +782,9 @@ export const ExamPlayer = ({
           {sessionEnded && (
             <div
               role="alert"
-              className="bg-error-surface text-destructive flex flex-wrap items-center gap-3 rounded-md px-4 py-3 text-sm">
-              <LogInIcon
-                aria-hidden="true"
-                className="size-4 shrink-0"
-              />
+              className="bg-error-surface text-destructive flex flex-wrap items-center gap-3 rounded-md px-4 py-3 text-sm"
+            >
+              <LogInIcon aria-hidden="true" className="size-4 shrink-0" />
               <p className="min-w-0 flex-1">
                 Your session has ended. Answers are kept on this device — sign
                 in again in a new tab and saving resumes here automatically.
@@ -728,7 +793,8 @@ export const ExamPlayer = ({
                 href="/"
                 target="_blank"
                 rel="noreferrer"
-                className="font-medium underline underline-offset-4">
+                className="font-medium underline underline-offset-4"
+              >
                 Sign in
               </a>
             </div>
@@ -737,13 +803,11 @@ export const ExamPlayer = ({
           {deadlineRisk && (
             <p
               role="alert"
-              className="bg-error-surface text-destructive flex items-start gap-2 rounded-md px-4 py-3 text-sm">
-              <WifiOffIcon
-                aria-hidden="true"
-                className="size-4 shrink-0"
-              />
-              Less than {Math.ceil(DEADLINE_RISK_SECONDS / 60)} minutes left
-              and {sync.pendingCount}{" "}
+              className="bg-error-surface text-destructive flex items-start gap-2 rounded-md px-4 py-3 text-sm"
+            >
+              <WifiOffIcon aria-hidden="true" className="size-4 shrink-0" />
+              Less than {Math.ceil(DEADLINE_RISK_SECONDS / 60)} minutes left and{" "}
+              {sync.pendingCount}{" "}
               {sync.pendingCount === 1 ? "answer has" : "answers have"} not
               reached the server. Reconnect now — answers that arrive after the
               deadline cannot be accepted.
@@ -753,7 +817,8 @@ export const ExamPlayer = ({
           {recoveredCount > 0 && (
             <div
               role="status"
-              className="bg-secondary text-secondary-foreground flex items-start gap-3 rounded-md px-4 py-3 text-sm">
+              className="bg-secondary text-secondary-foreground flex items-start gap-3 rounded-md px-4 py-3 text-sm"
+            >
               <HistoryIcon
                 aria-hidden="true"
                 className="mt-0.5 size-4 shrink-0"
@@ -761,15 +826,15 @@ export const ExamPlayer = ({
               <p className="min-w-0 flex-1">
                 Recovered {recoveredCount}{" "}
                 {recoveredCount === 1 ? "answer" : "answers"} saved on this
-                device that had not reached the server. They are being sent
-                now.
+                device that had not reached the server. They are being sent now.
               </p>
               <Button
                 type="button"
                 variant="outline"
                 size="icon-lg"
                 aria-label="Dismiss"
-                onClick={() => setRecoveredCount(0)}>
+                onClick={() => setRecoveredCount(0)}
+              >
                 <XIcon aria-hidden="true" />
               </Button>
             </div>
@@ -785,11 +850,9 @@ export const ExamPlayer = ({
           {autoSubmitting && !submitError && (
             <p
               role="status"
-              className="bg-warning-surface text-warning flex items-center gap-2 rounded-md px-4 py-3 text-sm">
-              <Loader2Icon
-                aria-hidden="true"
-                className="size-4 animate-spin"
-              />
+              className="bg-warning-surface text-warning flex items-center gap-2 rounded-md px-4 py-3 text-sm"
+            >
+              <Loader2Icon aria-hidden="true" className="size-4 animate-spin" />
               Time is up — submitting your saved answers…
             </p>
           )}
@@ -797,7 +860,8 @@ export const ExamPlayer = ({
           {submitError && (
             <p
               role="alert"
-              className="bg-error-surface text-destructive flex items-start gap-2 rounded-md px-4 py-3 text-sm">
+              className="bg-error-surface text-destructive flex items-start gap-2 rounded-md px-4 py-3 text-sm"
+            >
               <TriangleAlertIcon
                 aria-hidden="true"
                 className="size-4 shrink-0"
@@ -806,17 +870,29 @@ export const ExamPlayer = ({
             </p>
           )}
 
-          {currentQuestion ?
+          {currentQuestion ? (
             <fieldset
               disabled={locked}
-              className="bg-card min-w-0 rounded-lg border p-5 shadow-sm sm:p-6 lg:p-8">
+              className={cn(
+                "bg-card min-w-0 rounded-lg border shadow-sm",
+                preferences.density === "compact" ? "p-3" : "p-5 sm:p-6 lg:p-8",
+              )}
+            >
               <h2
                 ref={questionHeading}
                 tabIndex={-1}
-                className="text-primary mb-4 text-sm font-semibold focus:outline-none">
+                className="text-primary mb-4 text-sm font-semibold focus:outline-none"
+              >
                 Question {currentIndex + 1} of {questions.length}
               </h2>
-              <div className="exam-question-content" key={currentQuestion.id}>
+              <div
+                className={cn(
+                  "exam-question-content",
+                  preferences.font === "large" &&
+                    "[&_p]:text-lg! [&_label]:text-lg! [&_textarea]:text-lg!",
+                )}
+                key={currentQuestion.id}
+              >
                 <QuestionCard
                   question={currentQuestion}
                   value={answers[currentQuestion.id] ?? ""}
@@ -824,12 +900,19 @@ export const ExamPlayer = ({
                 />
               </div>
             </fieldset>
-          : <p className="bg-card text-muted-foreground rounded-lg border p-6">
+          ) : (
+            <p className="bg-card text-muted-foreground rounded-lg border p-6">
               This examination has no questions.
             </p>
-          }
+          )}
 
-          <DigitalScratchpad attemptId={attemptId} />
+          <div hidden={!preferences.scratchpad}>
+            <DigitalScratchpad
+              key={attemptId}
+              attemptId={attemptId}
+              disabled={locked}
+            />
+          </div>
 
           <div className="flex flex-wrap items-center gap-2">
             {currentQuestion && (
@@ -842,21 +925,25 @@ export const ExamPlayer = ({
                   currentFlagged &&
                     "border-warning bg-warning-surface text-warning",
                 )}
-                onClick={() => toggleFlag(currentQuestion.id)}>
+                onClick={() => toggleFlag(currentQuestion.id)}
+              >
                 <FlagIcon aria-hidden="true" />
                 {currentFlagged ? "Marked for review" : "Mark for review"}
               </Button>
             )}
-            <Sheet
-              open={navigatorOpen}
-              onOpenChange={setNavigatorOpen}>
+            <Sheet open={navigatorOpen} onOpenChange={setNavigatorOpen}>
               <SheetTrigger
                 render={
                   <Button
                     variant="outline"
-                    className="md:hidden"
+                    className={
+                      preferences.navigation === "sidebar"
+                        ? "md:hidden"
+                        : undefined
+                    }
                   />
-                }>
+                }
+              >
                 <LayoutGridIcon aria-hidden="true" /> Questions
               </SheetTrigger>
               <SheetContent>
@@ -874,15 +961,17 @@ export const ExamPlayer = ({
           </div>
         </div>
 
-        <aside className="bg-card hidden min-w-0 self-start rounded-lg border p-4 md:grid md:gap-4 lg:p-5">
-          <div className="grid gap-1">
-            <h2 className="font-semibold">Questions</h2>
-            <p className="text-muted-foreground text-sm">
-              {flagged.length} marked for review
-            </p>
-          </div>
-          {questionNavigation}
-        </aside>
+        {preferences.navigation === "sidebar" && (
+          <aside className="bg-card hidden min-w-0 self-start rounded-lg border p-4 md:grid md:gap-4 lg:p-5">
+            <div className="grid gap-1">
+              <h2 className="font-semibold">Questions</h2>
+              <p className="text-muted-foreground text-sm">
+                {flagged.length} marked for review
+              </p>
+            </div>
+            {questionNavigation}
+          </aside>
+        )}
       </div>
 
       <footer className="sticky bottom-0 z-10 border-t bg-card pb-[env(safe-area-inset-bottom)]">
@@ -891,45 +980,43 @@ export const ExamPlayer = ({
             <Button
               variant="outline"
               onClick={() => goTo(currentIndex - 1)}
-              disabled={currentIndex === 0 || submitting}>
+              disabled={currentIndex === 0 || submitting}
+            >
               <ChevronLeftIcon aria-hidden="true" /> Previous
             </Button>
             <Button
               variant="outline"
               onClick={() => goTo(currentIndex + 1)}
-              disabled={currentIndex >= questions.length - 1 || submitting}>
+              disabled={currentIndex >= questions.length - 1 || submitting}
+            >
               Next <ChevronRightIcon aria-hidden="true" />
             </Button>
           </div>
 
-          {timeLeft === 0 ?
-            <Button
-              onClick={() => void finalize(true)}
-              disabled={submitting}>
-              {submitting ?
+          {timeLeft === 0 ? (
+            <Button onClick={() => void finalize(true)} disabled={submitting}>
+              {submitting ? (
                 <>
-                  <Loader2Icon
-                    className="animate-spin"
-                    aria-hidden="true"
-                  />{" "}
+                  <Loader2Icon className="animate-spin" aria-hidden="true" />{" "}
                   Submitting…
                 </>
-              : "Retry submission"}
+              ) : (
+                "Retry submission"
+              )}
             </Button>
-          : <Dialog
-              open={reviewOpen}
-              onOpenChange={setReviewOpen}>
+          ) : (
+            <Dialog open={reviewOpen} onOpenChange={setReviewOpen}>
               <DialogTrigger
-                render={<Button disabled={submitting || readOnly} />}>
-                {submitting ?
+                render={<Button disabled={submitting || readOnly} />}
+              >
+                {submitting ? (
                   <>
-                    <Loader2Icon
-                      className="animate-spin"
-                      aria-hidden="true"
-                    />{" "}
+                    <Loader2Icon className="animate-spin" aria-hidden="true" />{" "}
                     Submitting…
                   </>
-                : "Review & submit"}
+                ) : (
+                  "Review & submit"
+                )}
               </DialogTrigger>
               <DialogContent>
                 <DialogHeader>
@@ -982,7 +1069,8 @@ export const ExamPlayer = ({
                             onClick={() => {
                               setReviewOpen(false);
                               goTo(index);
-                            }}>
+                            }}
+                          >
                             {index + 1}
                             {flagged.includes(q.id) && (
                               <FlagIcon
@@ -1002,22 +1090,23 @@ export const ExamPlayer = ({
                       aria-hidden="true"
                       className="size-4 shrink-0"
                     />
-                    {online ?
-                      `${sync.pendingCount} ${sync.pendingCount === 1 ? "answer is" : "answers are"} still saving. ${sync.pendingCount === 1 ? "It" : "They"} will be sent with your submission.`
-                    : "You are offline. Submission needs a connection — your answers stay on this device until then."}
+                    {online
+                      ? `${sync.pendingCount} ${sync.pendingCount === 1 ? "answer is" : "answers are"} still saving. ${sync.pendingCount === 1 ? "It" : "They"} will be sent with your submission.`
+                      : "You are offline. Submission needs a connection — your answers stay on this device until then."}
                   </p>
                 )}
                 <DialogFooter showCloseButton>
                   <DialogClose
                     render={
                       <Button onClick={() => void finalize(timeLeft === 0)} />
-                    }>
+                    }
+                  >
                     Submit examination
                   </DialogClose>
                 </DialogFooter>
               </DialogContent>
             </Dialog>
-          }
+          )}
         </div>
       </footer>
     </section>

@@ -3,269 +3,369 @@
 import "server-only";
 
 import { randomUUID } from "node:crypto";
-import { headers } from "next/headers";
-import { redirect } from "next/navigation";
+import { revalidatePath } from "next/cache";
+import { z } from "zod";
 import { hashPasswordFunction } from "@/lib/argon2";
-import { auth } from "@/lib/auth";
 import prisma from "@/lib/database/dbClient";
+import { requireRole } from "@/server/session";
 import {
   BANK_QUESTION_CSV_HEADERS,
   bankQuestionImportRowSchema,
   CANDIDATE_CSV_HEADERS,
   candidateImportRowSchema,
-  type BankQuestionImportRow,
-  type CandidateImportRow,
 } from "@/features/imports/schemas/csvSchemas";
 import {
-  assertBase64Limits,
   assertFileLimits,
-  MAX_ROWS,
+  MAX_BASE64_CHARS,
   parseCsvText,
   parseXlsxBuffer,
+  type ParseResult,
 } from "@/features/imports/services/parseTabular";
 import {
   buildBankQuestionsExport,
   buildCandidatesExport,
   buildResultsExport,
 } from "@/features/exports/services/exportBuilders";
-import { buildQuestionGradingFields } from "@/lib/exam/markingScheme";
+import {
+  buildQuestionGradingFields,
+  parseMarkingScheme,
+  splitLines,
+} from "@/lib/exam/markingScheme";
 
-const requireAdminOrExaminer = async () => {
-  const session = await auth.api.getSession({ headers: await headers() });
-  if (!session) redirect("/");
-  if (session.user.role !== "admin" && session.user.role !== "examiner")
-    redirect("/");
-  return session;
-};
+const requireAdminOrExaminer = () => requireRole("admin", "examiner");
+const requireAdmin = () => requireRole("admin");
+const modeSchema = z.enum(["candidates", "bank_questions"]);
+const requestSchema = z.object({
+  mode: modeSchema,
+  format: z.enum(["csv", "xlsx"]),
+  body: z.string().min(1).max(MAX_BASE64_CHARS),
+  encoding: z.enum(["text", "base64"]).default("text"),
+  fileName: z.string().trim().min(1).max(255),
+  commit: z.boolean(),
+});
 
-const requireAdmin = async () => {
-  const session = await requireAdminOrExaminer();
-  if (session.user.role !== "admin")
-    throw new Error("Only admins can import candidates");
-  return session;
-};
-
-const decodeXlsxBase64 = (base64: string) => {
-  assertBase64Limits(base64);
-  const binary = Buffer.from(base64, "base64");
-  assertFileLimits(binary.byteLength, MAX_ROWS);
-  return binary;
-};
-
-const revalidateCandidateRows = (rows: unknown[]): CandidateImportRow[] => {
-  if (!Array.isArray(rows)) throw new Error("Invalid import payload");
-  if (rows.length === 0) throw new Error("No valid rows to import");
-  if (rows.length > MAX_ROWS)
-    throw new Error(`Too many rows (max ${MAX_ROWS})`);
-
-  const valid: CandidateImportRow[] = [];
-  const errors: string[] = [];
-  rows.forEach((row, i) => {
-    const parsed = candidateImportRowSchema.safeParse(row);
-    if (parsed.success) valid.push(parsed.data);
-    else {
-      errors.push(
-        `row ${i + 1}: ${parsed.error.issues.map((iss) => iss.message).join("; ")}`,
-      );
-    }
-  });
-  if (errors.length > 0)
-    throw new Error(`Import rejected — invalid rows: ${errors.slice(0, 5).join(" | ")}`);
-  return valid;
-};
-
-const revalidateBankRows = (rows: unknown[]): BankQuestionImportRow[] => {
-  if (!Array.isArray(rows)) throw new Error("Invalid import payload");
-  if (rows.length === 0) throw new Error("No valid rows to import");
-  if (rows.length > MAX_ROWS)
-    throw new Error(`Too many rows (max ${MAX_ROWS})`);
-
-  const valid: BankQuestionImportRow[] = [];
-  const errors: string[] = [];
-  rows.forEach((row, i) => {
-    const parsed = bankQuestionImportRowSchema.safeParse(row);
-    if (parsed.success) valid.push(parsed.data);
-    else {
-      errors.push(
-        `row ${i + 1}: ${parsed.error.issues.map((iss) => iss.message).join("; ")}`,
-      );
-    }
-  });
-  if (errors.length > 0)
-    throw new Error(`Import rejected — invalid rows: ${errors.slice(0, 5).join(" | ")}`);
-  return valid;
-};
-
-export const previewCandidateCsv = async (csvText: string) => {
-  await requireAdmin();
-  return parseCsvText(csvText, candidateImportRowSchema, CANDIDATE_CSV_HEADERS);
-};
-
-export const previewCandidateXlsx = async (base64: string) => {
-  await requireAdmin();
-  const binary = decodeXlsxBase64(base64);
-  return parseXlsxBuffer(
-    binary.buffer.slice(
-      binary.byteOffset,
-      binary.byteOffset + binary.byteLength,
-    ),
-    candidateImportRowSchema,
-    CANDIDATE_CSV_HEADERS,
-  );
-};
-
-export const commitCandidateImport = async (
-  rows: unknown[],
-  fileName?: string,
+const parseFile = <T>(
+  input: z.infer<typeof requestSchema>,
+  schema: z.ZodType<T>,
+  columns: readonly string[],
 ) => {
-  const session = await requireAdmin();
-  const validRows = revalidateCandidateRows(rows);
-
-  const uniqueRows = [
-    ...new Map(validRows.map((row) => [row.email, row])).values(),
-  ];
-  const existing = await prisma.user.findMany({
-    where: { email: { in: uniqueRows.map((row) => row.email) } },
-    select: { email: true },
-  });
-  const existingEmails = new Set(existing.map((u) => u.email));
-  const toCreate = uniqueRows.filter((row) => !existingEmails.has(row.email));
-
-  // Argon2 is slow by design; hash before opening the transaction so a large
-  // file cannot exceed the interactive transaction timeout.
-  const prepared: Array<CandidateImportRow & { id: string; hashed: string }> =
-    [];
-  for (const row of toCreate) {
-    prepared.push({
-      ...row,
-      id: randomUUID(),
-      hashed: await hashPasswordFunction(row.password),
-    });
+  if (input.format === "csv") {
+    const text =
+      input.encoding === "base64"
+        ? Buffer.from(z.base64().parse(input.body), "base64").toString("utf8")
+        : input.body;
+    assertFileLimits(Buffer.byteLength(text), 0);
+    return parseCsvText(text, schema, columns);
   }
-
-  const created = prepared.length;
-  const skipped = validRows.length - created;
-
-  await prisma.$transaction(async (tx) => {
-    await tx.user.createMany({
-      data: prepared.map((row) => ({
-        id: row.id,
-        name: row.name,
-        email: row.email,
-        emailVerified: true,
-        role: "student",
-      })),
-    });
-    await tx.account.createMany({
-      data: prepared.map((row) => ({
-        accountId: row.id,
-        providerId: "credential",
-        userId: row.id,
-        password: row.hashed,
-      })),
-    });
-
-    await tx.importJob.create({
-      data: {
-        kind: "candidates",
-        fileName: fileName ?? null,
-        rowCount: validRows.length,
-        validCount: created,
-        errorCount: skipped,
-        createdById: session.user.id,
-        summary: `created=${created}; skippedDuplicates=${skipped}`,
-      },
-    });
-  });
-
-  return { created, skipped, errors: [] as string[] };
+  const buffer = Buffer.from(z.base64().parse(input.body), "base64");
+  assertFileLimits(buffer.byteLength, 0);
+  return parseXlsxBuffer(Uint8Array.from(buffer).buffer, schema, columns);
 };
 
-export const previewBankQuestionCsv = async (csvText: string) => {
-  await requireAdminOrExaminer();
-  return parseCsvText(
-    csvText,
-    bankQuestionImportRowSchema,
-    BANK_QUESTION_CSV_HEADERS,
-  );
-};
-
-export const previewBankQuestionXlsx = async (base64: string) => {
-  await requireAdminOrExaminer();
-  const binary = decodeXlsxBase64(base64);
-  return parseXlsxBuffer(
-    binary.buffer.slice(
-      binary.byteOffset,
-      binary.byteOffset + binary.byteLength,
-    ),
-    bankQuestionImportRowSchema,
-    BANK_QUESTION_CSV_HEADERS,
-  );
-};
-
-export const commitBankQuestionImport = async (
-  rows: unknown[],
-  fileName?: string,
+const inspectRows = <T>(
+  parsed: ParseResult<T>,
+  rowKey: (row: T) => string,
+  existing: Set<string>,
+  rowError: (row: T) => string | undefined = () => undefined,
 ) => {
+  const invalid = [...parsed.invalid];
+  const duplicates: number[] = [];
+  const seen = new Set(existing);
+  const accepted: T[] = [];
+  const acceptedNumbers: number[] = [];
+  parsed.valid.forEach((row, index) => {
+    const number = parsed.validRowNumbers[index]!;
+    const key = rowKey(row);
+    const error = rowError(row);
+    if (error) invalid.push({ row: number, message: error });
+    else if (seen.has(key)) duplicates.push(number);
+    else {
+      seen.add(key);
+      accepted.push(row);
+      acceptedNumbers.push(number);
+    }
+  });
+  invalid.sort((a, b) => a.row - b.row);
+  return { accepted, acceptedNumbers, invalid, duplicates };
+};
+
+const recordFailure = async (
+  kind: string,
+  fileName: string,
+  userId: string,
+  rowCount: number,
+  errorCount: number,
+) => {
+  await prisma.importJob.create({
+    data: {
+      kind,
+      fileName,
+      createdById: userId,
+      rowCount,
+      errorCount,
+      status: "failed",
+    },
+  });
+};
+
+const questionKey = (row: {
+  topicId: string;
+  text: string;
+  type: string;
+  answer: string | null;
+}) => JSON.stringify([row.topicId, row.text, row.type, row.answer ?? ""]);
+
+export const runTabularImport = async (raw: unknown) => {
   const session = await requireAdminOrExaminer();
-  const validRows = revalidateBankRows(rows);
-
-  let created = 0;
-  let skipped = 0;
-
-  await prisma.$transaction(async (tx) => {
-    for (const row of validRows) {
-      const topic = await tx.topic.findUnique({ where: { id: row.topicId } });
-      if (!topic) {
-        skipped++;
-        continue;
+  const input = requestSchema.parse(raw);
+  if (input.mode === "candidates" && session.user.role !== "admin")
+    throw new Error("Only admins can import candidates");
+  let rowCount = 0;
+  try {
+    if (input.mode === "candidates") {
+      const parsed = parseFile(
+        input,
+        candidateImportRowSchema,
+        CANDIDATE_CSV_HEADERS,
+      );
+      rowCount = parsed.rawCount;
+      if (rowCount > 100)
+        throw new Error("Candidate imports support up to 100 rows per file");
+      const existing = await prisma.user.findMany({
+        where: { email: { in: parsed.valid.map((row) => row.email) } },
+        select: { email: true },
+      });
+      const { accepted, acceptedNumbers, invalid, duplicates } = inspectRows(
+        parsed,
+        (row) => row.email,
+        new Set(existing.map((row) => row.email)),
+      );
+      const preview = accepted
+        .slice(0, 10)
+        .map((row, index) => ({
+          row: acceptedNumbers[index]!,
+          label: `${row.name} (${row.email})`,
+        }));
+      if (!input.commit)
+        return {
+          validCount: accepted.length,
+          preview,
+          invalid,
+          duplicates,
+          created: 0,
+          skipped: duplicates.length,
+          failed: invalid.length,
+        };
+      if (invalid.length) {
+        await recordFailure(
+          input.mode,
+          input.fileName,
+          session.user.id,
+          rowCount,
+          invalid.length,
+        );
+        return {
+          validCount: accepted.length,
+          preview: [],
+          invalid,
+          duplicates,
+          created: 0,
+          skipped: duplicates.length,
+          failed: invalid.length,
+        };
       }
-      const dup = await tx.bankQuestion.findFirst({
-        where: {
-          topicId: row.topicId,
-          text: row.text,
+
+      const prepared: {
+        id: string;
+        name: string;
+        email: string;
+        password: string;
+      }[] = [];
+      for (const row of accepted) {
+        prepared.push({
+          id: randomUUID(),
+          name: row.name,
+          email: row.email,
+          password: await hashPasswordFunction(row.password),
+        });
+      }
+      const created = await prisma.$transaction(async (tx) => {
+        const users = await tx.user.createManyAndReturn({
+          data: prepared.map(({ id, name, email }) => ({
+            id,
+            name,
+            email,
+            emailVerified: true,
+            role: "student",
+          })),
+          skipDuplicates: true,
+          select: { id: true },
+        });
+        const createdIds = new Set(users.map(({ id }) => id));
+        await tx.account.createMany({
+          data: prepared
+            .filter(({ id }) => createdIds.has(id))
+            .map(({ id, password }) => ({
+              accountId: id,
+              providerId: "credential",
+              userId: id,
+              password,
+            })),
+        });
+        await tx.importJob.create({
+          data: {
+            kind: input.mode,
+            fileName: input.fileName,
+            rowCount,
+            validCount: users.length,
+            createdById: session.user.id,
+            summary: `skippedDuplicates=${rowCount - users.length}`,
+          },
+        });
+        return users.length;
+      });
+      revalidatePath("/admin/users");
+      return {
+        validCount: accepted.length,
+        preview: [],
+        invalid,
+        duplicates,
+        created,
+        skipped: rowCount - created,
+        failed: 0,
+      };
+    }
+
+    const parsed = parseFile(
+      input,
+      bankQuestionImportRowSchema,
+      BANK_QUESTION_CSV_HEADERS,
+    );
+    rowCount = parsed.rawCount;
+    const normalized = {
+      ...parsed,
+      valid: parsed.valid.map((row) => ({
+        ...row,
+        options: splitLines(row.options).join("\n"),
+        ...buildQuestionGradingFields({
           type: row.type,
           answer: row.answer,
-        },
-      });
-      if (dup) {
-        skipped++;
-        continue;
+          markingSchemeJson: row.markingScheme,
+          manualGrading:
+            parseMarkingScheme(row.markingScheme)?.mode === "manual",
+        }),
+      })),
+    };
+    const topicIds = [...new Set(normalized.valid.map((row) => row.topicId))];
+    const run = async (
+      db: Pick<typeof prisma, "topic" | "bankQuestion" | "importJob">,
+    ) => {
+      const [topics, existing] = await Promise.all([
+        db.topic.findMany({
+          where: { id: { in: topicIds } },
+          select: { id: true },
+        }),
+        db.bankQuestion.findMany({
+          where: {
+            topicId: { in: topicIds },
+            text: { in: [...new Set(normalized.valid.map((row) => row.text))] },
+            ...(session.user.role === "examiner"
+              ? { createdById: session.user.id }
+              : {}),
+          },
+          select: { topicId: true, text: true, type: true, answer: true },
+        }),
+      ]);
+      const known = new Set(topics.map(({ id }) => id));
+      const { accepted, acceptedNumbers, invalid, duplicates } = inspectRows(
+        normalized,
+        questionKey,
+        new Set(existing.map(questionKey)),
+        (row) =>
+          known.has(row.topicId) ? undefined : "topicId: Topic does not exist",
+      );
+      const preview = input.commit
+        ? []
+        : accepted
+            .slice(0, 10)
+            .map((row, index) => ({
+              row: acceptedNumbers[index]!,
+              label: row.text,
+            }));
+      let created = 0;
+      if (input.commit) {
+        if (!invalid.length) {
+          const result = await db.bankQuestion.createMany({
+            data: accepted.map(
+              ({
+                text,
+                type,
+                options,
+                answer,
+                points,
+                difficulty,
+                markingScheme,
+                topicId,
+              }) => ({
+                text,
+                type,
+                options: options || null,
+                answer,
+                points,
+                difficulty,
+                markingScheme,
+                topicId,
+                createdById: session.user.id,
+              }),
+            ),
+          });
+          created = result.count;
+        }
+        await db.importJob.create({
+          data: {
+            kind: input.mode,
+            fileName: input.fileName,
+            rowCount,
+            validCount: created,
+            errorCount: invalid.length,
+            createdById: session.user.id,
+            status: invalid.length ? "failed" : "completed",
+            summary: `skippedDuplicates=${duplicates.length}`,
+          },
+        });
       }
-      const grading = buildQuestionGradingFields({
-        type: row.type,
-        answer: row.answer,
-      });
-      await tx.bankQuestion.create({
-        data: {
-          text: row.text,
-          type: row.type,
-          options: row.options || null,
-          answer: grading.answer,
-          points: row.points,
-          difficulty: row.difficulty ?? "medium",
-          markingScheme: grading.markingScheme,
-          topicId: row.topicId,
-          createdById: session.user.id,
-        },
-      });
-      created++;
-    }
-
-    await tx.importJob.create({
-      data: {
-        kind: "bank_questions",
-        fileName: fileName ?? null,
-        rowCount: validRows.length,
-        validCount: created,
-        errorCount: skipped,
-        createdById: session.user.id,
-        summary: `created=${created}; skipped=${skipped}`,
+      return {
+        validCount: accepted.length,
+        preview,
+        invalid,
+        duplicates,
+        created,
+        skipped: duplicates.length,
+        failed: invalid.length,
+      };
+    };
+    if (!input.commit) return run(prisma);
+    const result = await prisma.$transaction(
+      async (tx) => {
+        await tx.$queryRaw`SELECT 1 FROM pg_advisory_xact_lock(75012)`;
+        return run(tx);
       },
-    });
-  });
-
-  return { created, skipped };
+      { timeout: 15_000 },
+    );
+    revalidatePath("/admin/questions", "layout");
+    revalidatePath("/examiner/questions", "layout");
+    return result;
+  } catch (error) {
+    if (input.commit)
+      await recordFailure(
+        input.mode,
+        input.fileName,
+        session.user.id,
+        rowCount,
+        rowCount,
+      ).catch(() => undefined);
+    throw error;
+  }
 };
 
 export const exportCandidatesAction = async (format: "csv" | "xlsx") => {
@@ -306,6 +406,8 @@ export const exportExamResultsAction = async (
   format: "csv" | "xlsx",
 ) => {
   const session = await requireAdminOrExaminer();
+  z.string().min(1).max(64).parse(examId);
+  z.enum(["csv", "xlsx"]).parse(format);
   const exam = await prisma.exam.findUnique({
     where: { id: examId },
     select: { id: true, title: true, createdById: true },
@@ -349,10 +451,13 @@ export const exportExamResultsAction = async (
 };
 
 export const getCsvTemplates = async () => {
-  await requireAdminOrExaminer();
+  const session = await requireAdminOrExaminer();
   return {
-    candidates: "name,email,password\nJane Doe,jane@example.com,password123\n",
+    candidates:
+      session.user.role === "admin"
+        ? "name,email,password,role\nJane Doe,jane@example.com,password123,student\n"
+        : "",
     bankQuestions:
-      "text,type,options,answer,points,difficulty,topicId\nWhat is 2+2?,single_choice,\"3\\n4\\n5\",4,1,easy,TOPIC_UUID\n",
+      'text,type,options,answer,points,difficulty,topicId,markingScheme\nWhat is 2+2?,single_choice,"3\n4\n5",4,1,easy,TOPIC_UUID,\n',
   };
 };

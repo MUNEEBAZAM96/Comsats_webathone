@@ -4,6 +4,7 @@ import type { Route } from "next";
 import { BookOpenIcon, ChevronRightIcon, LayersIcon } from "lucide-react";
 import CreateSubjectDialog from "@/components/Bank/CreateSubjectDialog";
 import { Button } from "@/components/shadcnui/button";
+import { TabularImportPanel } from "@/features/imports/components/TabularImportPanel";
 import { getSubjects } from "@/server/bankActions";
 import { requireRole } from "@/server/session";
 
@@ -28,7 +29,9 @@ const ExaminerQuestionBankPage = async () => {
         <CreateSubjectDialog />
       </div>
 
-      {subjects.length === 0 ?
+      <TabularImportPanel mode="bank_questions" />
+
+      {subjects.length === 0 ? (
         <div className="flex flex-col items-center gap-4 py-16 text-center">
           <BookOpenIcon className="text-muted-foreground size-12" />
           <p className="text-muted-foreground text-lg">No subjects yet</p>
@@ -36,7 +39,8 @@ const ExaminerQuestionBankPage = async () => {
             Create a subject to start organizing your question bank.
           </p>
         </div>
-      : <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      ) : (
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {subjects.map((subject) => {
             const questionCount = subject.topics.reduce(
               (sum, t) => sum + t._count.questions,
@@ -45,7 +49,8 @@ const ExaminerQuestionBankPage = async () => {
             return (
               <div
                 key={subject.id}
-                className="border-border bg-card flex flex-col gap-3 rounded-3xl border p-5">
+                className="border-border bg-card flex flex-col gap-3 rounded-3xl border p-5"
+              >
                 <div className="grid min-w-0 gap-1">
                   <div className="flex items-center gap-2">
                     <LayersIcon className="text-muted-foreground size-4 shrink-0" />
@@ -68,13 +73,9 @@ const ExaminerQuestionBankPage = async () => {
                   </span>
                 </div>
                 <Link
-                  href={
-                    `/examiner/questions/subjects/${subject.id}` as Route
-                  }>
-                  <Button
-                    variant="outline"
-                    size="lg"
-                    className="w-full">
+                  href={`/examiner/questions/subjects/${subject.id}` as Route}
+                >
+                  <Button variant="outline" size="lg" className="w-full">
                     View Topics
                     <ChevronRightIcon className="size-4" />
                   </Button>
@@ -83,7 +84,7 @@ const ExaminerQuestionBankPage = async () => {
             );
           })}
         </div>
-      }
+      )}
     </section>
   );
 };

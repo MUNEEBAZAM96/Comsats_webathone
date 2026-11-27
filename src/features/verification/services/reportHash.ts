@@ -15,7 +15,7 @@ export type CanonicalExamSummary = {
   examId: string;
   examTitle: string;
   attemptCount: number;
-  averageScore: number;
+  averageScore: number | null;
   publishedAt: string;
 };
 
@@ -26,7 +26,9 @@ export const canonicalizeReport = (payload: CanonicalReport): string =>
   JSON.stringify(payload, Object.keys(payload).sort());
 
 export const hashReportPayload = (payload: CanonicalReport): string =>
-  createHash("sha256").update(canonicalizeReport(payload), "utf8").digest("hex");
+  createHash("sha256")
+    .update(canonicalizeReport(payload), "utf8")
+    .digest("hex");
 
 export const publicMetaFromCandidate = (
   payload: CanonicalCandidateReport,
@@ -37,10 +39,9 @@ export const publicMetaFromCandidate = (
     totalScore: payload.totalScore,
     maxScore: payload.maxScore,
     percentage:
-      payload.maxScore > 0 ?
-        Math.round((payload.totalScore / payload.maxScore) * 1000) / 10
-      : 0,
-    submittedAt: payload.submittedAt,
+      payload.maxScore > 0
+        ? Math.round((payload.totalScore / payload.maxScore) * 1000) / 10
+        : 0,
     publishedAt: publishedAt.toISOString(),
     type: payload.type,
   });

@@ -6,6 +6,7 @@ export type RowIssue = { row: number; message: string };
 
 export type ParseResult<T> = {
   valid: T[];
+  validRowNumbers: number[];
   invalid: RowIssue[];
   headers: string[];
   rawCount: number;
@@ -27,7 +28,9 @@ export const assertBase64Limits = (base64: string) => {
 };
 
 /** Neutralize CSV/Excel formula injection on exported cell values. */
-export const sanitizeExportCell = (value: unknown): string | number | boolean => {
+export const sanitizeExportCell = (
+  value: unknown,
+): string | number | boolean => {
   if (typeof value === "number" || typeof value === "boolean") return value;
   const text = value == null ? "" : String(value);
   if (/^[=+\-@\t\r]/.test(text)) return `'${text}`;
@@ -47,14 +50,19 @@ export const parseCsvText = <T>(
     transformHeader: (h) => h.trim().toLowerCase(),
   });
 
-  if (parsed.errors.length > 0) {
-    const first = parsed.errors[0];
+  const fileError = parsed.errors.find(
+    (error) => error.type !== "FieldMismatch" || error.row === undefined,
+  );
+  if (fileError) {
+    const first = fileError;
     throw new Error(
       first?.message ?? "Malformed CSV — check quoting and headers",
     );
   }
 
   const headers = parsed.meta.fields ?? [];
+  if (Object.keys(parsed.meta.renamedHeaders ?? {}).length)
+    throw new Error("Duplicate column headings");
   for (const h of requiredHeaders) {
     if (!headers.includes(h.toLowerCase()))
       throw new Error(`Missing required column: ${h}`);
@@ -64,11 +72,22 @@ export const parseCsvText = <T>(
 
   const valid: T[] = [];
   const invalid: RowIssue[] = [];
+  const validRowNumbers: number[] = [];
 
+  const malformed = new Map(
+    parsed.errors.map((error) => [error.row, error.message]),
+  );
   parsed.data.forEach((row, i) => {
+    const fieldsError = malformed.get(i);
+    if (fieldsError) {
+      invalid.push({ row: i + 2, message: fieldsError });
+      return;
+    }
     const result = schema.safeParse(row);
-    if (result.success) valid.push(result.data);
-    else {
+    if (result.success) {
+      valid.push(result.data);
+      validRowNumbers.push(i + 2);
+    } else {
       invalid.push({
         row: i + 2,
         message: result.error.issues
@@ -78,7 +97,13 @@ export const parseCsvText = <T>(
     }
   });
 
-  return { valid, invalid, headers, rawCount: parsed.data.length };
+  return {
+    valid,
+    validRowNumbers,
+    invalid,
+    headers,
+    rawCount: parsed.data.length,
+  };
 };
 
 export const parseXlsxBuffer = <T>(
@@ -94,22 +119,42 @@ export const parseXlsxBuffer = <T>(
     cellFormula: false,
     cellHTML: false,
     raw: false,
+    sheetRows: MAX_ROWS + 2,
+    sheets: sheetName ?? 0,
   });
 
   const name = sheetName ?? workbook.SheetNames[0];
   if (!name || !workbook.Sheets[name])
     throw new Error("Worksheet not found in spreadsheet");
 
-  const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(
-    workbook.Sheets[name]!,
-    { defval: "", raw: false },
-  );
+  const sheet = workbook.Sheets[name]!;
+  const fullRange = sheet["!fullref"] ?? sheet["!ref"];
+  if (!fullRange) throw new Error("Empty worksheet");
+  const range = XLSX.utils.decode_range(fullRange);
+  assertFileLimits(buffer.byteLength, range.e.r - range.s.r);
+  if (range.e.c - range.s.c >= 64)
+    throw new Error("The worksheet exceeds 64 columns");
 
-  assertFileLimits(buffer.byteLength, rows.length);
+  const headerRange = { s: range.s, e: { ...range.e, r: range.s.r } };
+  const [header = []] = XLSX.utils.sheet_to_json<unknown[]>(sheet, {
+    header: 1,
+    range: headerRange,
+  });
+  const headers = header
+    .map((value) =>
+      String(value ?? "")
+        .trim()
+        .toLowerCase(),
+    )
+    .filter(Boolean);
+  if (new Set(headers).size !== headers.length)
+    throw new Error("Duplicate column headings");
 
+  const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, {
+    defval: "",
+    raw: false,
+  });
   if (rows.length === 0) throw new Error("Empty worksheet");
-
-  const headers = Object.keys(rows[0] ?? {}).map((h) => h.trim().toLowerCase());
   for (const h of requiredHeaders) {
     if (!headers.includes(h.toLowerCase()))
       throw new Error(`Missing required column: ${h}`);
@@ -117,17 +162,23 @@ export const parseXlsxBuffer = <T>(
 
   const valid: T[] = [];
   const invalid: RowIssue[] = [];
+  const validRowNumbers: number[] = [];
 
   rows.forEach((row, i) => {
+    const rowNumber =
+      typeof row.__rowNum__ === "number" ? row.__rowNum__ + 1 : i + 2;
     const normalized: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(row)) {
-      normalized[k.trim().toLowerCase()] = typeof v === "string" ? v : String(v);
+      normalized[k.trim().toLowerCase()] =
+        typeof v === "string" ? v : String(v);
     }
     const result = schema.safeParse(normalized);
-    if (result.success) valid.push(result.data);
-    else {
+    if (result.success) {
+      valid.push(result.data);
+      validRowNumbers.push(rowNumber);
+    } else {
       invalid.push({
-        row: i + 2,
+        row: rowNumber,
         message: result.error.issues
           .map((iss) => `${iss.path.join(".")}: ${iss.message}`)
           .join("; "),
@@ -135,7 +186,7 @@ export const parseXlsxBuffer = <T>(
     }
   });
 
-  return { valid, invalid, headers, rawCount: rows.length };
+  return { valid, validRowNumbers, invalid, headers, rawCount: rows.length };
 };
 
 export const toCsv = (headers: string[], rows: Record<string, unknown>[]) =>
@@ -147,4 +198,3 @@ export const toCsv = (headers: string[], rows: Record<string, unknown>[]) =>
       return out;
     }),
   });
-

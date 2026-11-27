@@ -17,7 +17,12 @@ const memoryStorage = () => {
     upsert: async (_attemptId, questionId, text) => {
       const prev = rows.get(questionId);
       const seq = (prev?.seq ?? 0) + 1;
-      rows.set(questionId, { text, seq, synced: prev?.synced ?? 0, error: null });
+      rows.set(questionId, {
+        text,
+        seq,
+        synced: prev?.synced ?? 0,
+        error: null,
+      });
       return { clientSeq: seq, idempotencyKey: `key-${questionId}-${seq}` };
     },
     markSynced: async (_attemptId, questionId, seq) => {
@@ -68,7 +73,11 @@ const okResult = (
 ): SaveAnswersResult => ({
   ok: true,
   serverTime: new Date().toISOString(),
-  results: items.map((i) => ({ questionId: i.questionId, status, serverSeq: i.clientSeq })),
+  results: items.map((i) => ({
+    questionId: i.questionId,
+    status,
+    serverSeq: i.clientSeq,
+  })),
 });
 
 let passed = 0;
@@ -81,13 +90,58 @@ const test = async (name: string, fn: () => Promise<void>) => {
 const main = async () => {
   console.log("sync queue");
 
+  await test("automatic retry stops after five failures and manual retry can recover", async () => {
+    const { storage } = memoryStorage();
+    const timers = manualTimers();
+    let requests = 0;
+    const queue = createAnswerSyncQueue({
+      attemptId: "bounded",
+      storage,
+      isOnline: () => true,
+      ...timers,
+      send: async (items) => {
+        if (++requests <= 5) throw new Error("Temporary network error");
+        return okResult(items);
+      },
+    });
+    await queue.enqueue("q", "locally stored");
+    for (let n = 0; n < 5; n++) {
+      timers.fireAll();
+      await settle();
+    }
+    assert.equal(requests, 5);
+    assert.equal(queue.getSnapshot().state, "error");
+    assert.equal(queue.getSnapshot().pendingCount, 1);
+    assert.deepEqual(timers.pendingDelays(), []);
+    await queue.retryNow();
+    assert.equal(queue.getSnapshot().state, "synced");
+  });
+
   await test("backoff grows 1s,2s,4s… capped at 30s with ±20% jitter", async () => {
-    assert.equal(backoffDelay(1, () => 0.5), 1000);
-    assert.equal(backoffDelay(2, () => 0.5), 2000);
-    assert.equal(backoffDelay(4, () => 0.5), 8000);
-    assert.equal(backoffDelay(10, () => 0.5), 30000);
-    assert.equal(backoffDelay(1, () => 0), 800);
-    assert.equal(backoffDelay(1, () => 1), 1200);
+    assert.equal(
+      backoffDelay(1, () => 0.5),
+      1000,
+    );
+    assert.equal(
+      backoffDelay(2, () => 0.5),
+      2000,
+    );
+    assert.equal(
+      backoffDelay(4, () => 0.5),
+      8000,
+    );
+    assert.equal(
+      backoffDelay(10, () => 0.5),
+      30000,
+    );
+    assert.equal(
+      backoffDelay(1, () => 0),
+      800,
+    );
+    assert.equal(
+      backoffDelay(1, () => 1),
+      1200,
+    );
   });
 
   await test("rapid edits coalesce into one write per question", async () => {
@@ -266,7 +320,9 @@ const main = async () => {
       isOnline: () => true,
       ...timers,
     });
-    queue.setHandlers({ onStale: ({ questionId, text }) => stale.push({ questionId, text }) });
+    queue.setHandlers({
+      onStale: ({ questionId, text }) => stale.push({ questionId, text }),
+    });
     await queue.enqueue("q1", "mine");
     timers.fireAll();
     await settle();
@@ -285,7 +341,9 @@ const main = async () => {
       isOnline: () => true,
       ...timers,
     });
-    q2.prime({ server: [{ questionId: "q1", clientSeq: 9, text: "from other device" }] });
+    q2.prime({
+      server: [{ questionId: "q1", clientSeq: 9, text: "from other device" }],
+    });
     await q2.enqueue("q1", "newer");
     timers.fireAll();
     await settle();
@@ -362,8 +420,18 @@ const main = async () => {
         { questionId: "q2", clientSeq: 5, text: "server2" },
       ],
       recovered: [
-        { questionId: "q1", text: "local newer", clientSeq: 4, idempotencyKey: "k-q1-4" },
-        { questionId: "q2", text: "local older", clientSeq: 5, idempotencyKey: "k-q2-5" },
+        {
+          questionId: "q1",
+          text: "local newer",
+          clientSeq: 4,
+          idempotencyKey: "k-q1-4",
+        },
+        {
+          questionId: "q2",
+          text: "local older",
+          clientSeq: 5,
+          idempotencyKey: "k-q2-5",
+        },
       ],
     });
     assert.deepEqual(accepted, [{ questionId: "q1", text: "local newer" }]);

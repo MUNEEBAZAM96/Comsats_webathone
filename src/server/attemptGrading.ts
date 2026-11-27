@@ -5,7 +5,8 @@ import prisma from "@/lib/database/dbClient";
 import { gradeAnswer, roundScore } from "@/lib/exam/grading";
 import { shuffleArray, splitLines } from "@/lib/exam/markingScheme";
 
-export type SubmitSource = "manual" | "timer" | "resume_finalize" | "server_sweep";
+export type SubmitSource =
+  "manual" | "timer" | "resume_finalize" | "server_sweep";
 
 type Tx = Prisma.TransactionClient;
 
@@ -60,6 +61,8 @@ export const buildSnapshotRows = (
     points: number;
     difficulty: string;
     markingScheme: string | null;
+    topicName?: string | null;
+    subjectName?: string | null;
   }[],
   exam: { shuffleQuestions: boolean; shuffleOptions: boolean },
 ) => {
@@ -86,6 +89,8 @@ export const buildSnapshotRows = (
       order: index,
       difficulty: q.difficulty,
       markingScheme: q.markingScheme,
+      topicName: q.topicName,
+      subjectName: q.subjectName,
       optionOrder,
     };
   });
@@ -134,7 +139,9 @@ export const recomputeAttemptTotals = async (
     where: { id: attemptId },
     data: {
       autoScore,
-      manualScore: answers.some((a) => a.manualScore != null) ? manualScore : null,
+      manualScore: answers.some((a) => a.manualScore != null)
+        ? manualScore
+        : null,
       totalScore: pending > 0 ? null : total,
       status: pending > 0 ? "submitted" : "graded",
       gradedAt: pending > 0 ? null : (current.gradedAt ?? new Date()),
@@ -148,7 +155,10 @@ export const recomputeAttemptTotals = async (
  * Finalize and auto-grade an in-progress attempt from its snapshots.
  * Throws `AttemptNotInProgressError` if it is already finished.
  */
-export const finalizeAttempt = async (attemptId: string, source: SubmitSource) =>
+export const finalizeAttempt = async (
+  attemptId: string,
+  source: SubmitSource,
+) =>
   prisma.$transaction(
     async (tx) => {
       const status = await lockAttempt(tx, attemptId);

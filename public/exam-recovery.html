@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex" />
+    <title>Offline exam recovery</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        font:
+          1rem/1.5 system-ui,
+          sans-serif;
+      }
+      body {
+        max-width: 42rem;
+        margin: 2rem auto;
+        padding: 0 1rem;
+      }
+      button {
+        min-height: 2.75rem;
+        padding: 0.25rem 0.75rem;
+        font: inherit;
+      }
+      li {
+        margin: 0.75rem 0;
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+      }
+    </style>
+    <script src="/exam-recovery.js" defer></script>
+  </head>
+  <body>
+    <main>
+      <h1>Offline exam recovery</h1>
+      <p id="status" role="status">Checking for locally saved answers…</p>
+      <p>
+        The examination clock continues. Reconnect and reload to return to the
+        workspace. The server can receive answers while the attempt is still
+        active.
+      </p>
+      <button id="reload" type="button">Reload examination</button>
+      <section id="drafts" hidden>
+        <h2>Pending answers</h2>
+        <ul id="answers"></ul>
+      </section>
+    </main>
+  </body>
+</html>

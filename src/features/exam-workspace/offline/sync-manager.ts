@@ -28,6 +28,8 @@ export type SyncSnapshot = {
   lastSyncedAt: number | null;
   nextRetryAt: number | null;
   failures: number;
+  conflicts: number;
+  locallyQueued: boolean;
   closedReason: SaveAnswersFailure | null;
   /** False when IndexedDB is unavailable and answers live in memory only. */
   storageAvailable: boolean;
@@ -39,8 +41,13 @@ export type AnswerStorage = {
     attemptId: string,
     questionId: string,
     text: string,
+    minimumSeq?: number,
   ) => Promise<{ clientSeq: number; idempotencyKey: string }>;
-  markSynced: (attemptId: string, questionId: string, seq: number) => Promise<void>;
+  markSynced: (
+    attemptId: string,
+    questionId: string,
+    seq: number,
+  ) => Promise<void>;
   markFailed: (
     attemptId: string,
     questionId: string,
@@ -57,8 +64,8 @@ export type AnswerStorage = {
 };
 
 export const indexedDbAnswerStorage: AnswerStorage = {
-  upsert: (attemptId, questionId, text) =>
-    upsertLocalAnswer({ attemptId, questionId, text }),
+  upsert: (attemptId, questionId, text, minimumSeq) =>
+    upsertLocalAnswer({ attemptId, questionId, text, minimumSeq }),
   markSynced: markAnswerSynced,
   markFailed: markAnswerFailed,
   applyServerCopy,
@@ -71,7 +78,11 @@ export type QueueOptions = {
   /** Whether the device reports a network connection (navigator.onLine). */
   isOnline?: () => boolean;
   /** Server kept a newer copy; the UI should show it and tell the student. */
-  onStale?: (info: { questionId: string; text: string; serverSeq: number }) => void;
+  onStale?: (info: {
+    questionId: string;
+    text: string;
+    serverSeq: number;
+  }) => void;
   /** Server will accept no more writes (deadline, submitted, signed out). */
   onClosed?: (reason: SaveAnswersFailure, message: string) => void;
   onNetworkResult?: (ok: boolean) => void;
@@ -85,21 +96,25 @@ export type QueueOptions = {
 };
 
 /** 1s, 2s, 4s, 8s, 16s, then 30s, each with ±20% jitter. */
-export const backoffDelay = (failures: number, random: () => number = Math.random) => {
+export const backoffDelay = (
+  failures: number,
+  random: () => number = Math.random,
+) => {
   const base = Math.min(30_000, 1000 * 2 ** Math.max(0, failures - 1));
   return Math.round(base * (0.8 + random() * 0.4));
 };
 
 /** Consecutive failures after which the indicator asks for attention. */
 const ERROR_AFTER_FAILURES = 3;
+const MAX_AUTOMATIC_FAILURES = 5;
 
 const errorMessage = (error: unknown) =>
   error instanceof Error ? error.message : "Network error";
 
 const randomKey = () =>
-  typeof crypto !== "undefined" && "randomUUID" in crypto ?
-    crypto.randomUUID()
-  : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
+  typeof crypto !== "undefined" && "randomUUID" in crypto
+    ? crypto.randomUUID()
+    : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
 
 export const createAnswerSyncQueue = (options: QueueOptions) => {
   const {
@@ -112,12 +127,16 @@ export const createAnswerSyncQueue = (options: QueueOptions) => {
     now = Date.now,
     random = Math.random,
     setTimer = (fn, ms) => setTimeout(fn, ms),
-    clearTimer = (handle) => clearTimeout(handle as ReturnType<typeof setTimeout>),
+    clearTimer = (handle) =>
+      clearTimeout(handle as ReturnType<typeof setTimeout>),
   } = options;
   let { onStale, onClosed } = options;
 
   /** Latest unsent (or unacknowledged) write per question. */
   const pending = new Map<string, SaveAnswerItem>();
+  const staging = new Map<string, string>();
+  const volatileQuestions = new Set<string>();
+  let conflicts = 0;
   /** Highest sequence handed out or acknowledged per question. */
   const seqFloor = new Map<string, number>();
   /** Last text recorded per question, to skip no-op edits. */
@@ -137,24 +156,28 @@ export const createAnswerSyncQueue = (options: QueueOptions) => {
   let primed = !options.awaitPrime;
 
   const compute = (): SyncSnapshot => {
+    const pendingIds = new Set([...pending.keys(), ...staging.keys()]);
     let state: SyncState;
     if (closedReason) state = "closed";
     else if (inFlight) state = "saving";
     else if (!primed) state = "restoring";
-    else if (pending.size === 0) state = "synced";
     else if (!isOnline()) state = "offline";
+    else if (pendingIds.size === 0) state = "synced";
     else if (fatal || failures >= ERROR_AFTER_FAILURES) state = "error";
     else if (failures > 0) state = "retrying";
     else state = "pending";
     return {
       state,
-      pendingCount: pending.size,
-      pendingQuestionIds: [...pending.keys()].sort(),
+      pendingCount: pendingIds.size,
+      pendingQuestionIds: [...pendingIds].sort(),
+      conflicts,
+      locallyQueued:
+        staging.size === 0 && volatileQuestions.size === 0 && storageAvailable,
       lastSyncedAt,
       nextRetryAt,
       failures,
       closedReason,
-      storageAvailable,
+      storageAvailable: storageAvailable && volatileQuestions.size === 0,
     };
   };
 
@@ -174,7 +197,7 @@ export const createAnswerSyncQueue = (options: QueueOptions) => {
     cancelTimer();
     timer = setTimer(() => {
       timer = null;
-      void flush();
+      void flush(true);
     }, ms);
   };
 
@@ -191,15 +214,21 @@ export const createAnswerSyncQueue = (options: QueueOptions) => {
       onNetworkResult?.(false);
       failures++;
       const delay = backoffDelay(failures, random);
-      nextRetryAt = now() + delay;
+      nextRetryAt = failures < MAX_AUTOMATIC_FAILURES ? now() + delay : null;
       await Promise.all(
         batch.map((item) =>
           storage
-            .markFailed(attemptId, item.questionId, item.clientSeq, errorMessage(error), nextRetryAt)
+            .markFailed(
+              attemptId,
+              item.questionId,
+              item.clientSeq,
+              errorMessage(error),
+              nextRetryAt,
+            )
             .catch(() => undefined),
         ),
       );
-      schedule(delay);
+      if (nextRetryAt !== null) schedule(delay);
       return;
     }
 
@@ -221,37 +250,72 @@ export const createAnswerSyncQueue = (options: QueueOptions) => {
     failures = 0;
     fatal = false;
     nextRetryAt = null;
-    lastSyncedAt = now();
+    if (
+      res.results.some(
+        (item) => item.status === "saved" || item.status === "duplicate",
+      )
+    )
+      lastSyncedAt = now();
 
     for (const result of res.results) {
       const { questionId, serverSeq } = result;
       const current = pending.get(questionId);
-      seqFloor.set(questionId, Math.max(seqFloor.get(questionId) ?? 0, serverSeq));
+      seqFloor.set(
+        questionId,
+        Math.max(seqFloor.get(questionId) ?? 0, serverSeq),
+      );
 
       if (result.status === "saved" || result.status === "duplicate") {
-        if (current && current.clientSeq <= serverSeq) pending.delete(questionId);
-        await storage.markSynced(attemptId, questionId, serverSeq).catch(() => undefined);
+        if (current && current.clientSeq <= serverSeq) {
+          pending.delete(questionId);
+          volatileQuestions.delete(questionId);
+        }
+        await storage
+          .markSynced(attemptId, questionId, serverSeq)
+          .catch(() => undefined);
       } else if (result.status === "stale") {
         // A newer local edit queued meanwhile outranks the server copy.
         if (current && current.clientSeq > serverSeq) continue;
         pending.delete(questionId);
+        volatileQuestions.delete(questionId);
         const text = result.serverText ?? "";
-        lastText.set(questionId, text);
+        if (!staging.has(questionId)) lastText.set(questionId, text);
         await storage
           .applyServerCopy(attemptId, questionId, text, serverSeq)
           .catch(() => undefined);
-        onStale?.({ questionId, text, serverSeq });
+        conflicts++;
+        if (!staging.has(questionId))
+          onStale?.({ questionId, text, serverSeq });
       } else {
         const sent = batch.find((b) => b.questionId === questionId);
-        if (current && sent && current.clientSeq === sent.clientSeq)
-          pending.delete(questionId);
+        if (current && sent && current.clientSeq === sent.clientSeq) {
+          fatal = true;
+          await storage
+            .markFailed(
+              attemptId,
+              questionId,
+              sent.clientSeq,
+              "Invalid answer",
+              null,
+            )
+            .catch(() => undefined);
+        }
       }
     }
   };
 
-  const flush = (): Promise<void> => {
+  const flush = (force = false): Promise<void> => {
     if (inFlight) return inFlight;
-    if (stopped || closedReason || pending.size === 0) return Promise.resolve();
+    if (
+      stopped ||
+      closedReason ||
+      !primed ||
+      fatal ||
+      failures >= MAX_AUTOMATIC_FAILURES ||
+      (!force && nextRetryAt !== null && nextRetryAt > now()) ||
+      pending.size === 0
+    )
+      return Promise.resolve();
     if (!isOnline()) {
       emit();
       return Promise.resolve();
@@ -260,7 +324,8 @@ export const createAnswerSyncQueue = (options: QueueOptions) => {
     const current = run().finally(() => {
       inFlight = null;
       emit();
-      if (pending.size > 0 && failures === 0 && !fatal && !closedReason) schedule(0);
+      if (pending.size > 0 && failures === 0 && !fatal && !closedReason)
+        schedule(0);
     });
     inFlight = current;
     emit();
@@ -273,16 +338,24 @@ export const createAnswerSyncQueue = (options: QueueOptions) => {
     if (lastText.get(questionId) === text) return Promise.resolve();
     lastText.set(questionId, text);
 
+    staging.set(questionId, text);
+    emit();
     const op = writeChain.then(async () => {
       let clientSeq: number;
       let idempotencyKey: string;
       try {
-        const row = await storage.upsert(attemptId, questionId, text);
+        const row = await storage.upsert(
+          attemptId,
+          questionId,
+          text,
+          seqFloor.get(questionId),
+        );
         storageAvailable = true;
+        volatileQuestions.delete(questionId);
         clientSeq = row.clientSeq;
         idempotencyKey = row.idempotencyKey;
       } catch {
-        storageAvailable = false;
+        volatileQuestions.add(questionId);
         clientSeq = 0;
         idempotencyKey = randomKey();
       }
@@ -293,6 +366,7 @@ export const createAnswerSyncQueue = (options: QueueOptions) => {
       }
       seqFloor.set(questionId, clientSeq);
       pending.set(questionId, { questionId, text, clientSeq, idempotencyKey });
+      if (staging.get(questionId) === text) staging.delete(questionId);
       emit();
       if (failures === 0) schedule(debounceMs);
     });
@@ -306,7 +380,14 @@ export const createAnswerSyncQueue = (options: QueueOptions) => {
    */
   const prime = (input: {
     server: { questionId: string; clientSeq: number; text: string | null }[];
-    recovered?: { questionId: string; text: string; clientSeq: number; idempotencyKey: string }[];
+    conflicts?: number;
+    storageAvailable?: boolean;
+    recovered?: {
+      questionId: string;
+      text: string;
+      clientSeq: number;
+      idempotencyKey: string;
+    }[];
   }) => {
     for (const row of input.server) {
       const floor = seqFloor.get(row.questionId) ?? 0;
@@ -329,6 +410,8 @@ export const createAnswerSyncQueue = (options: QueueOptions) => {
       });
       accepted.push({ questionId: row.questionId, text: row.text });
     }
+    conflicts += input.conflicts ?? 0;
+    storageAvailable = input.storageAvailable ?? storageAvailable;
     primed = true;
     emit();
     return accepted;
@@ -337,6 +420,7 @@ export const createAnswerSyncQueue = (options: QueueOptions) => {
   /** Skip the backoff wait (online event, tab visible, "Retry now"). */
   const retryNow = () => {
     fatal = false;
+    failures = 0;
     nextRetryAt = null;
     cancelTimer();
     return flush();
@@ -348,12 +432,16 @@ export const createAnswerSyncQueue = (options: QueueOptions) => {
    */
   const flushAll = async (maxRounds = 6) => {
     await writeChain;
-    for (let round = 0; round < maxRounds && pending.size > 0 && !closedReason; round++) {
+    for (
+      let round = 0;
+      round < maxRounds && pending.size > 0 && !closedReason;
+      round++
+    ) {
       if (!isOnline()) break;
       const before = failures;
       fatal = false;
       cancelTimer();
-      await (inFlight ?? flush());
+      await (inFlight ?? flush(true));
       if (failures > before || fatal) break;
     }
     return pending.size === 0;

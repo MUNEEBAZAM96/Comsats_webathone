@@ -110,7 +110,10 @@ export const studentNav: NavGroup[] = [
   overview("/student"),
   {
     label: "Assessments",
-    items: [{ title: "My Exams", url: "/student/exams", icon: "FileText" }],
+    items: [
+      { title: "My Exams", url: "/student/exams", icon: "FileText" },
+      { title: "Practice", url: "/student/practice", icon: "FileText" },
+    ],
   },
   {
     label: "Reports",
