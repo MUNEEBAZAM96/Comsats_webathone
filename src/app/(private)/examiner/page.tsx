@@ -1,16 +1,15 @@
+import { DashboardIntro } from "@/components/Dashboard/DashboardIntro";
+import {
+  DashboardRow,
+  DashboardSection,
+} from "@/components/Dashboard/DashboardSection";
 import { StatCard } from "@/components/Dashboard/StatCard";
 import {
   ExaminerDashboardSkeleton,
   ExaminerShellSkeleton,
 } from "@/components/Examiner/ExaminerShellSkeleton";
 import { Badge } from "@/components/shadcnui/badge";
-import { Button } from "@/components/shadcnui/button";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/shadcnui/card";
+import { DashboardLink } from "@/components/Dashboard/DashboardLink";
 import prisma from "@/lib/database/dbClient";
 import { requireRole } from "@/server/session";
 import { format } from "date-fns";
@@ -23,7 +22,6 @@ import {
 } from "lucide-react";
 import type { Metadata, Route } from "next";
 import { cacheLife, cacheTag } from "next/cache";
-import Link from "next/link";
 import { Suspense } from "react";
 
 export const metadata: Metadata = {
@@ -32,7 +30,7 @@ export const metadata: Metadata = {
 };
 
 const ExaminerDashboard = () => (
-  <section className="grid gap-8">
+  <section className="grid gap-6">
     <Suspense fallback={<ExaminerShellSkeleton />}>
       <ExaminerDashboardContent />
     </Suspense>
@@ -45,12 +43,15 @@ const ExaminerDashboardContent = async () => {
 
   return (
     <>
-      <div>
-        <h1 className="text-2xl font-medium">Examiner Dashboard</h1>
-        <p className="text-muted-foreground">
-          Welcome back, {session?.user.name}
-        </p>
-      </div>
+      <DashboardIntro
+        title="Examiner overview"
+        action={
+          <DashboardLink href="/examiner/exams/new">
+            <PlusIcon aria-hidden="true" /> Create Exam
+          </DashboardLink>
+        }>
+        Prepare exams, assign candidates, and review results for your exams.
+      </DashboardIntro>
 
       <Suspense fallback={<ExaminerDashboardSkeleton />}>
         <ExaminerDashboardStats userId={userId} />
@@ -106,7 +107,7 @@ const ExaminerDashboardStats = async ({ userId }: { userId: string }) => {
 
   return (
     <>
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard
           icon={<FileTextIcon className="text-primary size-6" />}
           label="My Exams"
@@ -129,86 +130,66 @@ const ExaminerDashboardStats = async ({ userId }: { userId: string }) => {
         />
       </div>
 
-      {totalExams > 0 && (
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Card>
-            <CardHeader>
-              <CardTitle>Exam Overview</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid gap-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground text-sm">
-                    Published
-                  </span>
-                  <span className="font-medium">{publishedExams}</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground text-sm">Draft</span>
-                  <span className="font-medium">{draftExams}</span>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      )}
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Your Exams</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {recentExams.length === 0 ?
-            <div className="py-6 text-center">
-              <p className="text-muted-foreground mb-4">
-                You haven&apos;t created any exams yet.
-              </p>
-              <Link
-                href="/examiner/exams/new"
-                as={"/examiner/exams/new" as Route}>
-                <Button
-                  variant="outline"
-                  size="lg">
-                  <PlusIcon className="size-4" />
-                  Create Your First Exam
-                </Button>
-              </Link>
-            </div>
-          : <div className="grid gap-3">
+      <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+        <DashboardSection
+          id="examiner-exams"
+          title="Your exams">
+          {recentExams.length ? (
+            <ul>
               {recentExams.map((exam) => (
-                <div
-                  key={exam.id}
-                  className="border-border bg-card flex items-center justify-between gap-4 rounded-3xl border p-4">
-                  <div>
-                    <p className="font-medium">{exam.title}</p>
-                    <p className="text-muted-foreground text-xs">
+                <DashboardRow key={exam.id}>
+                  <div className="min-w-0 flex-1 basis-44">
+                    <p className="break-words font-medium">{exam.title}</p>
+                    <p className="text-xs text-muted-foreground">
                       {exam._count.questions} questions &middot;{" "}
                       {exam._count.assignments} students &middot;{" "}
-                      {exam._count.attempts} attempt(s) &middot;{" "}
+                      {exam._count.attempts} attempts &middot;{" "}
                       {format(exam.createdAt, "MMM d, yyyy")}
                     </p>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
                     <Badge
-                      variant={
-                        exam.status === "published" ? "default" : "secondary"
-                      }>
+                      variant="secondary"
+                      className="capitalize">
                       {exam.status}
                     </Badge>
-                    <Link href={`/examiner/exams/${exam.id}` as Route}>
-                      <Button
-                        variant="outline"
-                        size="lg">
-                        View
-                      </Button>
-                    </Link>
+                    <DashboardLink
+                      href={`/examiner/exams/${exam.id}` as Route}
+                      variant="outline">
+                      Manage Exam
+                    </DashboardLink>
                   </div>
-                </div>
+                </DashboardRow>
               ))}
+            </ul>
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              Create your first exam to start preparing an assessment.
+            </p>
+          )}
+        </DashboardSection>
+
+        <DashboardSection
+          id="examiner-preparation"
+          title="Exam preparation">
+          <dl className="grid gap-2">
+            <div className="flex items-center justify-between gap-2">
+              <dt className="text-muted-foreground">Draft</dt>
+              <dd className="font-medium">{draftExams}</dd>
             </div>
-          }
-        </CardContent>
-      </Card>
+            <div className="flex items-center justify-between gap-2">
+              <dt className="text-muted-foreground">Published</dt>
+              <dd className="font-medium">{publishedExams}</dd>
+            </div>
+          </dl>
+          <DashboardLink
+            href="/examiner/questions"
+            variant="outline"
+            className="mt-4">
+            <BookOpenIcon aria-hidden="true" /> Question Bank
+          </DashboardLink>
+        </DashboardSection>
+      </div>
     </>
   );
 };

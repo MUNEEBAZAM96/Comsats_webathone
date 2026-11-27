@@ -1,18 +1,19 @@
 "use client";
 
-import { useTheme } from "next-themes";
-import { ToastContainer } from "react-toastify";
+import { Toaster } from "sonner";
 
-const ToastProvider = () => {
-  const { theme } = useTheme();
-
-  return (
-    <ToastContainer
-      position="bottom-right"
-      autoClose={1500}
-      theme={theme === "dark" ? "dark" : "light"}
-    />
-  );
-};
+const ToastProvider = () => (
+  <Toaster
+    position="bottom-right"
+    closeButton
+    toastOptions={{
+      classNames: {
+        toast: "!border-border !bg-card !text-card-foreground",
+        success: "[&_[data-icon]]:text-success",
+        error: "[&_[data-icon]]:text-destructive",
+      },
+    }}
+  />
+);
 
 export default ToastProvider;

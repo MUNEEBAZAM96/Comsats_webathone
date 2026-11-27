@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+import { useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { LogOutIcon, SettingsIcon } from "lucide-react";
 import {
@@ -8,6 +10,7 @@ import {
   SidebarTrigger,
 } from "@/components/shadcnui/sidebar";
 import { Separator } from "@/components/shadcnui/separator";
+import ThemeToggleButton from "@/components/ThemeToggleButton";
 import {
   Avatar,
   AvatarFallback,
@@ -23,19 +26,15 @@ import {
   DropdownMenuSeparator,
 } from "@/components/shadcnui/dropdown-menu";
 import { AppSidebar } from "./AppSidebar";
-import { findMatchingNavItem, type NavGroup } from "./nav-config";
+import { getPageTitle, type NavGroup } from "./nav-config";
 import { authClient } from "@/lib/auth-client";
+import { useIsTablet } from "@/hooks/use-mobile";
 
-const getPageTitle = (pathname: string, groups: NavGroup[]): string => {
-  const allItems = groups.flatMap((g) => g.items);
-  const match = findMatchingNavItem(pathname, allItems);
-  if (match) return match.title;
-  const normalized = pathname.replace(/\/$/, "") || "/";
-  const segments = normalized.split("/").filter(Boolean);
-  const last = segments[segments.length - 1];
-  return last ?
-      last.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())
-    : "Dashboard";
+const roleLabels: Record<string, string> = {
+  "/admin": "Administrator",
+  "/examiner": "Examiner",
+  "/proctor": "Proctor",
+  "/student": "Candidate",
 };
 
 const SidebarLayout = ({
@@ -48,6 +47,9 @@ const SidebarLayout = ({
   const { data: session } = authClient.useSession();
   const router = useRouter();
   const pathname = usePathname();
+  const isTablet = useIsTablet();
+  const [sidebarOpen, setSidebarOpen] = useState<boolean | null>(null);
+  const roleLabel = roleLabels[groups[0]?.items[0]?.url] ?? "Workspace";
   const pageTitle = getPageTitle(pathname, groups);
 
   const handleSignOut = async () => {
@@ -55,22 +57,49 @@ const SidebarLayout = ({
     router.push("/");
   };
 
-  const initials = session?.user?.email?.charAt(0).toUpperCase() ?? "?";
+  const initials =
+    session?.user.name
+      .trim()
+      .split(/\s+/)
+      .slice(0, 2)
+      .map((name) => name[0])
+      .join("")
+      .toUpperCase() ||
+    session?.user.email.charAt(0).toUpperCase() ||
+    "?";
+
+  const isExamWorkspace = /^\/student\/exams\/[^/]+\/?$/.test(pathname);
+  if (isExamWorkspace) return <main>{children}</main>;
 
   return (
-    <SidebarProvider>
-      <AppSidebar groups={groups} />
-      <SidebarInset>
-        <header className="flex h-14 shrink-0 items-center gap-2 border-b px-4">
-          <SidebarTrigger className="-ml-1" />
+    <SidebarProvider
+      open={sidebarOpen ?? !isTablet}
+      onOpenChange={setSidebarOpen}>
+      <AppSidebar
+        groups={groups}
+        roleLabel={roleLabel}
+      />
+      <SidebarInset className="min-w-0">
+        <header className="sticky top-0 z-10 flex h-16 shrink-0 items-center gap-3 border-b bg-card px-4 lg:px-8">
+          <SidebarTrigger className="-ml-1 size-11 shrink-0" />
           <Separator
             orientation="vertical"
             className="h-6"
           />
-          <span className="truncate font-medium">{pageTitle}</span>
-          <div className="ml-auto">
+          <div className="min-w-0">
+            <p
+              className="truncate text-sm font-semibold"
+              title={pageTitle}>
+              {pageTitle}
+            </p>
+            <p className="text-xs text-muted-foreground">{roleLabel}</p>
+          </div>
+          <div className="ml-auto flex shrink-0 items-center gap-2 sm:gap-3">
+            <ThemeToggleButton />
             <DropdownMenu>
-              <DropdownMenuTrigger>
+              <DropdownMenuTrigger
+                aria-label="Account menu"
+                className="grid size-11 place-items-center rounded-md focus-visible:outline-2">
                 <Avatar
                   size="sm"
                   className="cursor-pointer">
@@ -78,7 +107,9 @@ const SidebarLayout = ({
                   <AvatarFallback>{initials}</AvatarFallback>
                 </Avatar>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
+              <DropdownMenuContent
+                align="end"
+                className="w-72 max-w-[calc(100vw-2rem)]">
                 <DropdownMenuGroup>
                   <div className="flex items-center gap-3 px-2 py-1.5">
                     <Avatar size="sm">
@@ -86,17 +117,17 @@ const SidebarLayout = ({
                       <AvatarFallback>{initials}</AvatarFallback>
                     </Avatar>
                     <div className="flex min-w-0 flex-col">
-                      <div className="flex items-center gap-2">
-                        <span className="truncate text-sm font-medium">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span className="break-all text-sm font-medium">
                           {session?.user?.name ?? "User"}
                         </span>
                         <Badge
                           variant="outline"
                           className="shrink-0 px-1.5 py-0 text-[10px] leading-none capitalize">
-                          {session?.user?.role}
+                          {roleLabel}
                         </Badge>
                       </div>
-                      <span className="text-muted-foreground truncate text-xs">
+                      <span className="text-muted-foreground break-all text-xs">
                         {session?.user?.email}
                       </span>
                     </div>
@@ -105,7 +136,7 @@ const SidebarLayout = ({
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
                   className="cursor-pointer"
-                  onClick={() => router.push("/settings")}>
+                  render={<Link href="/settings" />}>
                   <SettingsIcon />
                   Settings
                 </DropdownMenuItem>
@@ -120,7 +151,9 @@ const SidebarLayout = ({
             </DropdownMenu>
           </div>
         </header>
-        <div className="flex flex-1 flex-col gap-4 p-6">{children}</div>
+        <div className="mx-auto flex w-full max-w-[94rem] flex-1 flex-col gap-6 p-4 sm:p-6 lg:p-8">
+          {children}
+        </div>
       </SidebarInset>
     </SidebarProvider>
   );

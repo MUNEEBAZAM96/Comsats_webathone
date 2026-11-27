@@ -8,7 +8,7 @@ import {
   XIcon,
 } from "lucide-react";
 import { useCallback, useState } from "react";
-import { toast } from "react-toastify";
+import { toast } from "sonner";
 import { deleteQuestion, updateQuestion } from "@/server/examActions";
 import {
   getBankHierarchy,
@@ -133,7 +133,7 @@ const EditQuestionForm = ({
               rows={2}
               placeholder="Enter question text"
               aria-invalid={fieldState.invalid}
-              className="bg-input/50 placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-ring/30 aria-invalid:border-destructive aria-invalid:ring-destructive/20 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 h-16 w-full min-w-0 resize-y rounded-3xl border border-transparent px-3 py-2 text-sm transition-[color,box-shadow,background-color] outline-none focus-visible:ring-3 disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:ring-3"
+              className="bg-card placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-ring/30 aria-invalid:border-destructive aria-invalid:ring-destructive/20 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 h-16 w-full min-w-0 resize-y rounded-md border border-input px-3 py-2 text-sm transition-[color,box-shadow,background-color] outline-none focus-visible:ring-3 disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:ring-3"
             />
             {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
           </Field>
@@ -151,7 +151,7 @@ const EditQuestionForm = ({
                 {...field}
                 id={field.name}
                 aria-invalid={fieldState.invalid}
-                className="bg-input/50 focus-visible:border-ring focus-visible:ring-ring/30 aria-invalid:border-destructive aria-invalid:ring-destructive/20 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 h-9 w-full min-w-0 rounded-3xl border border-transparent px-3 py-1 text-sm transition-[color,box-shadow,background-color] outline-none focus-visible:ring-3 aria-invalid:ring-3">
+                className="bg-card focus-visible:border-ring focus-visible:ring-ring/30 aria-invalid:border-destructive aria-invalid:ring-destructive/20 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 h-11 w-full min-w-0 rounded-md border border-input px-3 py-1 text-sm transition-[color,box-shadow,background-color] outline-none focus-visible:ring-3 aria-invalid:ring-3">
                 {Object.entries(questionTypes).map(([value, label]) => (
                   <option
                     key={value}
@@ -200,7 +200,7 @@ const EditQuestionForm = ({
               rows={3}
               placeholder="Option A&#10;Option B&#10;Option C"
               aria-invalid={fieldState.invalid}
-              className="bg-input/50 placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-ring/30 aria-invalid:border-destructive aria-invalid:ring-destructive/20 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 h-16 w-full min-w-0 resize-y rounded-3xl border border-transparent px-3 py-2 text-sm transition-[color,box-shadow,background-color] outline-none focus-visible:ring-3 disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:ring-3"
+              className="bg-card placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-ring/30 aria-invalid:border-destructive aria-invalid:ring-destructive/20 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 h-16 w-full min-w-0 resize-y rounded-md border border-input px-3 py-2 text-sm transition-[color,box-shadow,background-color] outline-none focus-visible:ring-3 disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:ring-3"
             />
             {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
           </Field>
@@ -348,7 +348,7 @@ const ImportBankDialog = ({ examId }: { examId: string }) => {
               setSubjectId(e.target.value);
               setTopicId("");
             }}
-            className="bg-input/50 focus-visible:border-ring focus-visible:ring-ring/30 h-9 w-full rounded-3xl border border-transparent px-3 py-1 text-sm outline-none focus-visible:ring-3">
+            className="bg-card focus-visible:border-ring focus-visible:ring-ring/30 h-11 w-full rounded-md border border-input px-3 py-1 text-sm outline-none focus-visible:ring-3">
             <option value="">All subjects</option>
             {hierarchy.map((s) => (
               <option
@@ -361,7 +361,7 @@ const ImportBankDialog = ({ examId }: { examId: string }) => {
           <select
             value={topicId}
             onChange={(e) => setTopicId(e.target.value)}
-            className="bg-input/50 focus-visible:border-ring focus-visible:ring-ring/30 h-9 w-full rounded-3xl border border-transparent px-3 py-1 text-sm outline-none focus-visible:ring-3">
+            className="bg-card focus-visible:border-ring focus-visible:ring-ring/30 h-11 w-full rounded-md border border-input px-3 py-1 text-sm outline-none focus-visible:ring-3">
             <option value="">All topics</option>
             {topicsForSubject.map((t) => (
               <option
@@ -380,7 +380,7 @@ const ImportBankDialog = ({ examId }: { examId: string }) => {
             placeholder="Search questions..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="bg-input/50 focus-visible:border-ring focus-visible:ring-ring/30 h-9 w-full rounded-3xl border border-transparent pr-3 pl-9 text-sm transition-[color,box-shadow,background-color] outline-none focus-visible:ring-3"
+            className="bg-card focus-visible:border-ring focus-visible:ring-ring/30 h-11 w-full rounded-md border border-input pr-3 pl-9 text-sm transition-[color,box-shadow,background-color] outline-none focus-visible:ring-3"
           />
         </div>
 
@@ -493,7 +493,7 @@ const QuestionsManager = ({ examId, questions }: QuestionsManagerProps) => {
                     {q.points} pt{q.points !== 1 ? "s" : ""}
                   </span>
                   {q.answer && (
-                    <span className="rounded-full bg-green-500/10 px-2 py-0.5 text-green-600 dark:text-green-400">
+                    <span className="rounded-full bg-success-surface px-2 py-0.5 text-success">
                       Answer: {q.answer}
                     </span>
                   )}

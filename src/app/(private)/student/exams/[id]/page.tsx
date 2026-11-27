@@ -1,3 +1,4 @@
+import { addMinutes, min } from "date-fns";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { startExam, getAttemptQuestions } from "@/server/studentExamActions";
@@ -22,13 +23,14 @@ const StudentTakeExamPage = async ({
     const message =
       e instanceof Error ? e.message : "This exam is not available";
     return (
-      <section className="grid gap-4">
+      <section className="mx-auto grid w-full max-w-2xl gap-4 px-4 py-12">
         <h1 className="text-2xl font-medium">Exam Unavailable</h1>
         <p className="text-muted-foreground">{message}</p>
         <div>
           <Link
             href="/student/exams"
-            className="text-primary text-sm hover:underline">
+            className="text-primary text-sm hover:underline"
+          >
             ← Back to My Exams
           </Link>
         </div>
@@ -38,7 +40,7 @@ const StudentTakeExamPage = async ({
 
   if (!attempt) {
     return (
-      <section className="grid gap-4">
+      <section className="mx-auto grid w-full max-w-2xl gap-4 px-4 py-12">
         <h1 className="text-2xl font-medium">Exam not found</h1>
         <p className="text-muted-foreground">
           Could not start this exam. Please try again.
@@ -46,7 +48,8 @@ const StudentTakeExamPage = async ({
         <div>
           <Link
             href="/student/exams"
-            className="text-primary text-sm hover:underline">
+            className="text-primary text-sm hover:underline"
+          >
             ← Back to My Exams
           </Link>
         </div>
@@ -58,7 +61,7 @@ const StudentTakeExamPage = async ({
 
   if (data.attempt.status !== "in_progress") {
     return (
-      <section className="grid gap-4">
+      <section className="mx-auto grid w-full max-w-2xl gap-4 px-4 py-12">
         <h1 className="text-2xl font-medium">Exam already submitted</h1>
         <p className="text-muted-foreground">
           You have already submitted this exam.
@@ -66,7 +69,8 @@ const StudentTakeExamPage = async ({
         <div>
           <Link
             href="/student/exams"
-            className="text-primary text-sm hover:underline">
+            className="text-primary text-sm hover:underline"
+          >
             ← Back to My Exams
           </Link>
         </div>
@@ -74,12 +78,19 @@ const StudentTakeExamPage = async ({
     );
   }
 
+  const durationDeadline = addMinutes(
+    data.attempt.startedAt,
+    data.attempt.exam.duration,
+  );
+  const deadline = data.attempt.exam.endTime
+    ? min([durationDeadline, data.attempt.exam.endTime])
+    : durationDeadline;
+
   return (
     <ExamPlayer
       attemptId={data.attempt.id}
       examTitle={data.attempt.exam?.title ?? "Exam"}
-      duration={data.attempt.exam?.duration ?? 0}
-      startedAt={data.attempt.startedAt.toISOString()}
+      initialRemainingMs={Math.max(0, deadline.getTime() - Date.now())}
       questions={data.questions}
       savedAnswers={data.answers}
     />

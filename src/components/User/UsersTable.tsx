@@ -4,7 +4,7 @@ import { format } from "date-fns";
 import { Loader2Icon, SearchIcon, Trash2Icon } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { toast } from "react-toastify";
+import { toast } from "sonner";
 import {
   banUser,
   deleteUser,
@@ -246,10 +246,10 @@ const UsersTable = ({ initialUsers, initialTotal }: UsersTableProps) => {
                   </td>
                   <td className="px-4 py-3">
                     {user.banned ?
-                      <span className="inline-flex items-center rounded-full bg-red-500/10 px-2.5 py-0.5 text-xs font-medium text-red-600 dark:text-red-400">
+                      <span className="inline-flex items-center rounded-full bg-error-surface px-2.5 py-0.5 text-xs font-medium text-destructive">
                         Banned
                       </span>
-                    : <span className="inline-flex items-center rounded-full bg-green-500/10 px-2.5 py-0.5 text-xs font-medium text-green-600 dark:text-green-400">
+                    : <span className="inline-flex items-center rounded-full bg-success-surface px-2.5 py-0.5 text-xs font-medium text-success">
                         Active
                       </span>
                     }

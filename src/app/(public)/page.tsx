@@ -1,51 +1,30 @@
+import { AuthHeading } from "@/components/Auth/AuthHeading";
 import LoginForm from "@/components/Auth/LoginForm";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from "@/components/shadcnui/card";
-import { Metadata } from "next";
+import type { Metadata } from "next";
 import Link from "next/link";
 
 export const metadata: Metadata = {
   title: "Sign in",
-  description: "Sign in to your account",
+  description: "Sign in to your ExamGuard workspace",
 };
 
-const page = () => {
-  return (
-    <section className="grid h-dvh place-items-center">
-      <Card className="w-xs sm:w-sm">
-        <CardHeader className="text-center">
-          <CardTitle className="text-xl">Sign in</CardTitle>
-          <CardDescription>Sign in to your account</CardDescription>
-        </CardHeader>
+const LoginPage = () => (
+  <section className="grid gap-8">
+    <AuthHeading
+      title="Welcome back"
+      description="Sign in to your ExamGuard workspace."
+    />
+    <LoginForm />
+    <p className="border-t pt-6 text-center text-sm text-muted-foreground">
+      New to ExamGuard?{" "}
+      <Link
+        href="/register"
+        className="font-semibold text-primary underline-offset-4 hover:underline"
+      >
+        Create an account
+      </Link>
+    </p>
+  </section>
+);
 
-        <CardContent>
-          <LoginForm />
-        </CardContent>
-
-        <CardFooter className="flex-col gap-2">
-          <div className="flex justify-center gap-1">
-            Don&apos;t have an account?
-            <Link
-              href="/register"
-              className="hover:underline">
-              Create
-            </Link>
-          </div>
-          <Link
-            href={"/forgot-password" as never}
-            className="text-muted-foreground text-xs hover:underline">
-            Forgot password?
-          </Link>
-        </CardFooter>
-      </Card>
-    </section>
-  );
-};
-
-export default page;
+export default LoginPage;

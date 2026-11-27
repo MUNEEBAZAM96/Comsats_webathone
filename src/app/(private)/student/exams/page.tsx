@@ -16,7 +16,7 @@ import { AttemptBadge } from "@/components/Student/AttemptBadge";
 import { ClockIcon, EyeIcon, PlayIcon, RotateCcwIcon } from "lucide-react";
 
 export const metadata: Metadata = {
-  title: "My Exams",
+  title: "My examinations",
   description: "View your exams",
 };
 
@@ -40,17 +40,21 @@ const StudentExamsPage = async () => {
 
   return (
     <section className="grid gap-6">
-      <h1 className="text-2xl font-medium">My Exams</h1>
-      {exams.length === 0 ?
+      <header className="grid gap-2">
+        <h1>My examinations</h1>
+        <p className="text-muted-foreground">Review schedules and open your assigned examinations.</p>
+      </header>
+      {exams.length === 0 ? (
         <Card>
           <CardHeader>
-            <CardTitle>No exams assigned</CardTitle>
+            <CardTitle>No examinations assigned</CardTitle>
             <CardDescription>
-              You haven&apos;t been assigned any exams yet.
+              Assigned examinations will appear here.
             </CardDescription>
           </CardHeader>
         </Card>
-      : <div className="grid gap-4">
+      ) : (
+        <div className="grid gap-4 xl:grid-cols-2">
           {exams.map((exam) => {
             const attempt = exam.attempt;
             const timeStatus = getTimeStatus(exam);
@@ -58,13 +62,13 @@ const StudentExamsPage = async () => {
             const timeBadge = () => {
               if (timeStatus === "not_yet_available")
                 return (
-                  <Badge className="bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
+                  <Badge className="bg-warning-surface text-warning">
                     <ClockIcon className="mr-1 size-3" /> Scheduled
                   </Badge>
                 );
               if (timeStatus === "ended")
                 return (
-                  <Badge className="bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-400">
+                  <Badge className="bg-muted text-muted-foreground">
                     Ended
                   </Badge>
                 );
@@ -74,12 +78,12 @@ const StudentExamsPage = async () => {
             return (
               <Card key={exam.id}>
                 <CardHeader>
-                  <div className="flex items-start justify-between">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
                     <div className="grid gap-1">
                       <CardTitle className="text-lg">{exam.title}</CardTitle>
                       <CardDescription>{exam.description}</CardDescription>
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
                       <ExamStatusBadge status={exam.status} />
                       <AttemptBadge status={attempt?.status} />
                       {timeBadge()}
@@ -87,8 +91,8 @@ const StudentExamsPage = async () => {
                   </div>
                 </CardHeader>
                 <CardContent>
-                  <div className="flex items-center justify-between">
-                    <div className="text-muted-foreground flex gap-4 text-sm">
+                  <div className="flex flex-wrap items-center justify-between gap-4 border-t pt-4">
+                    <div className="text-muted-foreground flex flex-wrap gap-x-4 gap-y-1 text-sm">
                       <span>{exam.duration} min</span>
                       <span>{exam._count.questions} questions</span>
                       <span>by {exam.createdBy.name}</span>
@@ -105,7 +109,7 @@ const StudentExamsPage = async () => {
                       {exam.status === "published" &&
                         !attempt &&
                         timeStatus === "available" && (
-                          <Link href={`/student/exams/${exam.id}`}>
+                          <Link prefetch={false} href={`/student/exams/${exam.id}`}>
                             <Button size="lg">
                               <PlayIcon className="size-4" /> Start
                             </Button>
@@ -114,23 +118,19 @@ const StudentExamsPage = async () => {
                       {exam.status === "published" &&
                         !attempt &&
                         timeStatus === "not_yet_available" && (
-                          <Button
-                            size="lg"
-                            disabled>
+                          <Button size="lg" disabled>
                             <ClockIcon className="size-4" /> Not Yet Available
                           </Button>
                         )}
                       {exam.status === "published" &&
                         !attempt &&
                         timeStatus === "ended" && (
-                          <Button
-                            size="lg"
-                            disabled>
+                          <Button size="lg" disabled>
                             Ended
                           </Button>
                         )}
                       {attempt?.status === "in_progress" && (
-                        <Link href={`/student/exams/${exam.id}`}>
+                        <Link prefetch={false} href={`/student/exams/${exam.id}`}>
                           <Button size="lg">
                             <RotateCcwIcon className="size-4" /> Resume
                           </Button>
@@ -139,9 +139,7 @@ const StudentExamsPage = async () => {
                       {(attempt?.status === "submitted" ||
                         attempt?.status === "graded") && (
                         <Link href={`/student/results/${attempt.id}`}>
-                          <Button
-                            variant="outline"
-                            size="lg">
+                          <Button variant="outline" size="lg">
                             <EyeIcon className="size-4" /> View Result
                           </Button>
                         </Link>
@@ -153,7 +151,7 @@ const StudentExamsPage = async () => {
             );
           })}
         </div>
-      }
+      )}
     </section>
   );
 };

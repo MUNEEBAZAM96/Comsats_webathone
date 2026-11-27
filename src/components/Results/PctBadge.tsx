@@ -3,10 +3,10 @@ import { Badge } from "@/components/shadcnui/badge";
 const PctBadge = ({ pct }: { pct: number }) => {
   const className =
     pct >= 80 ?
-      "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"
+      "bg-success-surface text-success"
     : pct >= 50 ?
-      "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
-    : "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400";
+      "bg-warning-surface text-warning"
+    : "bg-error-surface text-destructive";
   return <Badge className={className}>{pct}%</Badge>;
 };
 

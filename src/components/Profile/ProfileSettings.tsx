@@ -3,7 +3,7 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Loader2Icon, LockIcon, SaveIcon } from "lucide-react";
 import { Controller, useForm } from "react-hook-form";
-import { toast } from "react-toastify";
+import { toast } from "sonner";
 import { authClient } from "@/lib/auth-client";
 import {
   type ChangePasswordFormType,

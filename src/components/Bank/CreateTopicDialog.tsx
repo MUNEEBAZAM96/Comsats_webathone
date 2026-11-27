@@ -5,7 +5,7 @@ import { Loader2Icon, PlusIcon } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Controller, useForm } from "react-hook-form";
-import { toast } from "react-toastify";
+import { toast } from "sonner";
 import { createTopic } from "@/server/bankActions";
 import { type TopicFormType, topicFormSchema } from "@/lib/zodSchema";
 import { Button } from "../shadcnui/button";

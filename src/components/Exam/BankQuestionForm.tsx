@@ -9,7 +9,7 @@ import { Loader2Icon } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useMemo } from "react";
 import { Controller, useForm, useWatch } from "react-hook-form";
-import { toast } from "react-toastify";
+import { toast } from "sonner";
 import { Button } from "../shadcnui/button";
 import { Field, FieldError, FieldLabel } from "../shadcnui/field";
 import { Input } from "../shadcnui/input";
@@ -141,7 +141,7 @@ const BankQuestionForm = ({
             id="subjectId"
             value={selectedSubjectId}
             onChange={(e) => onSubjectChange(e.target.value)}
-            className="bg-input/50 focus-visible:border-ring focus-visible:ring-ring/30 h-9 w-full min-w-0 rounded-3xl border border-transparent px-3 py-1 text-sm transition-[color,box-shadow,background-color] outline-none focus-visible:ring-3">
+            className="bg-card focus-visible:border-ring focus-visible:ring-ring/30 h-11 w-full min-w-0 rounded-md border border-input px-3 py-1 text-sm transition-[color,box-shadow,background-color] outline-none focus-visible:ring-3">
             {hierarchy.map((s) => (
               <option
                 key={s.id}
@@ -164,7 +164,7 @@ const BankQuestionForm = ({
                 {...field}
                 id={field.name}
                 aria-invalid={fieldState.invalid}
-                className="bg-input/50 focus-visible:border-ring focus-visible:ring-ring/30 aria-invalid:border-destructive aria-invalid:ring-destructive/20 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 h-9 w-full min-w-0 rounded-3xl border border-transparent px-3 py-1 text-sm transition-[color,box-shadow,background-color] outline-none focus-visible:ring-3 aria-invalid:ring-3">
+                className="bg-card focus-visible:border-ring focus-visible:ring-ring/30 aria-invalid:border-destructive aria-invalid:ring-destructive/20 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 h-11 w-full min-w-0 rounded-md border border-input px-3 py-1 text-sm transition-[color,box-shadow,background-color] outline-none focus-visible:ring-3 aria-invalid:ring-3">
                 {topicsForSubject.length === 0 ?
                   <option value="">No topics</option>
                 : topicsForSubject.map((t) => (
@@ -194,7 +194,7 @@ const BankQuestionForm = ({
               rows={3}
               placeholder="Enter question text"
               aria-invalid={fieldState.invalid}
-              className="bg-input/50 placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-ring/30 aria-invalid:border-destructive aria-invalid:ring-destructive/20 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 h-24 w-full min-w-0 resize-y rounded-3xl border border-transparent px-3 py-2 text-sm transition-[color,box-shadow,background-color] outline-none focus-visible:ring-3 disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:ring-3"
+              className="bg-card placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-ring/30 aria-invalid:border-destructive aria-invalid:ring-destructive/20 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 h-24 w-full min-w-0 resize-y rounded-md border border-input px-3 py-2 text-sm transition-[color,box-shadow,background-color] outline-none focus-visible:ring-3 disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:ring-3"
             />
             {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
           </Field>
@@ -212,7 +212,7 @@ const BankQuestionForm = ({
                 {...field}
                 id={field.name}
                 aria-invalid={fieldState.invalid}
-                className="bg-input/50 focus-visible:border-ring focus-visible:ring-ring/30 aria-invalid:border-destructive aria-invalid:ring-destructive/20 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 h-9 w-full min-w-0 rounded-3xl border border-transparent px-3 py-1 text-sm transition-[color,box-shadow,background-color] outline-none focus-visible:ring-3 aria-invalid:ring-3">
+                className="bg-card focus-visible:border-ring focus-visible:ring-ring/30 aria-invalid:border-destructive aria-invalid:ring-destructive/20 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 h-11 w-full min-w-0 rounded-md border border-input px-3 py-1 text-sm transition-[color,box-shadow,background-color] outline-none focus-visible:ring-3 aria-invalid:ring-3">
                 {questionTypes.map((t) => (
                   <option
                     key={t.value}
@@ -261,7 +261,7 @@ const BankQuestionForm = ({
               rows={4}
               placeholder="Option A&#10;Option B&#10;Option C"
               aria-invalid={fieldState.invalid}
-              className="bg-input/50 placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-ring/30 aria-invalid:border-destructive aria-invalid:ring-destructive/20 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 h-24 w-full min-w-0 resize-y rounded-3xl border border-transparent px-3 py-2 text-sm transition-[color,box-shadow,background-color] outline-none focus-visible:ring-3 disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:ring-3"
+              className="bg-card placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-ring/30 aria-invalid:border-destructive aria-invalid:ring-destructive/20 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 h-24 w-full min-w-0 resize-y rounded-md border border-input px-3 py-2 text-sm transition-[color,box-shadow,background-color] outline-none focus-visible:ring-3 disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:ring-3"
             />
             {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
           </Field>
