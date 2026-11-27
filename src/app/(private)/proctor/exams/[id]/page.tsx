@@ -7,6 +7,11 @@ export const metadata: Metadata = {
   description: "Live monitoring, incidents and announcements",
 };
 
+// This route must read the request-bound Better Auth session before rendering.
+// Allow it to block while that session check completes instead of requiring an
+// instant-navigation static shell for uncached request data.
+export const instant = false;
+
 const ProctorMonitorExamPage = async ({
   params,
 }: {
