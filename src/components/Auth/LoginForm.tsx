@@ -7,6 +7,7 @@ import { Loader2Icon, LockIcon } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { Controller, useForm } from "react-hook-form";
 import { toast } from "react-toastify";
+import AuthTestBanner from "./AuthTestBanner";
 import { Button } from "../shadcnui/button";
 import { Checkbox } from "../shadcnui/checkbox";
 import { Field, FieldError, FieldLabel } from "../shadcnui/field";
@@ -20,6 +21,7 @@ const LoginForm = () => {
     control,
     formState: { isSubmitting, isValid },
     reset,
+    setValue,
   } = useForm({
     resolver: zodResolver(loginFormSchema),
     defaultValues: {
@@ -29,6 +31,11 @@ const LoginForm = () => {
     },
     mode: "all",
   });
+
+  const fillSeedAccount = (email: string, password: string) => {
+    setValue("email", email, { shouldValidate: true, shouldDirty: true });
+    setValue("password", password, { shouldValidate: true, shouldDirty: true });
+  };
 
   const loginFormHandler = async ({
     email,
@@ -62,6 +69,11 @@ const LoginForm = () => {
       onSubmit={handleSubmit(loginFormHandler)}
       className="grid gap-6"
       noValidate>
+      <AuthTestBanner
+        showSeedHelper
+        onFillAccount={fillSeedAccount}
+      />
+
       {/* Email field */}
       <Controller
         name="email"

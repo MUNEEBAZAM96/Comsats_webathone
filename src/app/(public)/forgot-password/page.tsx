@@ -1,3 +1,4 @@
+import AuthTestBanner from "@/components/Auth/AuthTestBanner";
 import ForgotPasswordForm from "@/components/Auth/ForgotPasswordForm";
 import {
   Card,
@@ -26,7 +27,8 @@ const ForgotPasswordPage = () => {
           </CardDescription>
         </CardHeader>
 
-        <CardContent>
+        <CardContent className="grid gap-4">
+          <AuthTestBanner />
           <ForgotPasswordForm />
         </CardContent>
 
