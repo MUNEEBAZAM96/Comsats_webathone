@@ -15,6 +15,7 @@ import {
   DashboardSection,
 } from "@/components/Dashboard/DashboardSection";
 import { StatCard } from "@/components/Dashboard/StatCard";
+import { IncidentSeverityBubbles } from "@/components/Dashboard/IncidentSeverityBubbles";
 import { Badge } from "@/components/shadcnui/badge";
 import prisma from "@/lib/database/dbClient";
 import { formatDisplayDateTime } from "@/lib/date/format";
@@ -36,25 +37,43 @@ const ProctorDashboardPage = () => (
 const ProctorDashboardContent = async () => {
   const session = await requireRole("proctor");
 
-  const assignments = await prisma.examProctor.findMany({
-    where: { proctorId: session.user.id },
-    orderBy: [
-      { exam: { startTime: { sort: "asc", nulls: "last" } } },
-      { examId: "asc" },
-    ],
-    select: {
-      exam: {
-        select: {
-          id: true,
-          title: true,
-          status: true,
-          startTime: true,
-          endTime: true,
-          _count: { select: { assignments: true, attempts: true } },
+  const [assignments, unresolvedIncidents] = await Promise.all([
+    prisma.examProctor.findMany({
+      where: { proctorId: session.user.id },
+      orderBy: [
+        { exam: { startTime: { sort: "asc", nulls: "last" } } },
+        { examId: "asc" },
+      ],
+      select: {
+        exam: {
+          select: {
+            id: true,
+            title: true,
+            status: true,
+            startTime: true,
+            endTime: true,
+            _count: { select: { assignments: true, attempts: true } },
+          },
         },
       },
-    },
-  });
+    }),
+    prisma.examIncident.groupBy({
+      by: ["severity"],
+      where: {
+        exam: { proctors: { some: { proctorId: session.user.id } } },
+        status: { in: ["open", "under_review"] },
+      },
+      _count: true,
+    }),
+  ]);
+
+  const incidentsBySeverity = new Map<string, number>();
+  for (const { severity, _count } of unresolvedIncidents) {
+    const key = ["high", "medium", "low"].includes(severity)
+      ? severity
+      : "other";
+    incidentsBySeverity.set(key, (incidentsBySeverity.get(key) ?? 0) + _count);
+  }
 
   const now = new Date();
   const exams = assignments.map(({ exam }) => ({
@@ -262,6 +281,19 @@ const ProctorDashboardContent = async () => {
           )}
         </DashboardSection>
       </div>
+
+      <DashboardSection
+        id="proctor-incidents"
+        title="Unresolved incident severity"
+      >
+        {incidentsBySeverity.size ? (
+          <IncidentSeverityBubbles counts={incidentsBySeverity} />
+        ) : (
+          <DashboardEmpty>
+            No open or under-review incidents on your assigned exams.
+          </DashboardEmpty>
+        )}
+      </DashboardSection>
 
       {otherExams.length > 0 && (
         <DashboardSection id="proctor-other" title="Draft and completed exams">

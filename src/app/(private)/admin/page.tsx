@@ -9,6 +9,7 @@ import {
 } from "@/components/Dashboard/DashboardSection";
 import { StatusBreakdown } from "@/components/Dashboard/StatusBreakdown";
 import { DashboardTrend } from "@/components/Dashboard/DashboardTrend";
+import { ExamStartsHeatmap } from "@/components/Dashboard/ExamStartsHeatmap";
 import { DashboardIntro } from "@/components/Dashboard/DashboardIntro";
 import { StatusBadge } from "@/components/Results/StatusBadge";
 import { StatCard } from "@/components/Dashboard/StatCard";
@@ -16,10 +17,10 @@ import { Badge } from "@/components/shadcnui/badge";
 import { DashboardLink } from "@/components/Dashboard/DashboardLink";
 import { ResponsiveTable } from "@/components/Workspace/ResponsiveTable";
 import prisma from "@/lib/database/dbClient";
-import { formatDisplayDate } from "@/lib/date/format";
+import { formatDisplayDate, formatIsoUtc } from "@/lib/date/format";
 import { formatScore } from "@/lib/exam/grading";
 import { requireRole } from "@/server/session";
-import { format, parseISO } from "date-fns";
+import { addHours, format, parseISO } from "date-fns";
 import {
   BookOpenIcon,
   FileTextIcon,
@@ -77,6 +78,10 @@ const AdminDashboardStats = async ({ utcDay }: { utcDay: string }) => {
   cacheLife("minutes");
   cacheTag("admin-dashboard");
 
+  const calendarStart = parseISO(`${utcDay}T00:00:00Z`);
+  const calendarEnd = addHours(calendarStart, 28 * 24);
+  const calendarLastDay = formatIsoUtc(addHours(calendarEnd, -24)).slice(0, 10);
+
   const [
     userCounts,
     examCounts,
@@ -85,6 +90,7 @@ const AdminDashboardStats = async ({ utcDay }: { utcDay: string }) => {
     recentExams,
     recentAttempts,
     dailySubmissions,
+    scheduledStarts,
   ] = await Promise.all([
     prisma.user.groupBy({ by: ["role"], _count: true }),
     prisma.exam.groupBy({ by: ["status"], _count: true }),
@@ -136,6 +142,14 @@ const AdminDashboardStats = async ({ utcDay }: { utcDay: string }) => {
       LEFT JOIN counts ON counts.day = series.day::date
       ORDER BY series.day
     `,
+    prisma.exam.groupBy({
+      by: ["startTime"],
+      where: {
+        status: "published",
+        startTime: { gte: calendarStart, lt: calendarEnd },
+      },
+      _count: true,
+    }),
   ]);
 
   const totalUsers = userCounts.reduce((sum, group) => sum + group._count, 0);
@@ -152,6 +166,12 @@ const AdminDashboardStats = async ({ utcDay }: { utcDay: string }) => {
     (sum, { value }) => sum + value,
     0,
   );
+  const startsByDay = new Map<string, number>();
+  for (const { startTime, _count } of scheduledStarts) {
+    if (!startTime) continue;
+    const day = formatIsoUtc(startTime).slice(0, 10);
+    startsByDay.set(day, (startsByDay.get(day) ?? 0) + _count);
+  }
 
   return (
     <>
@@ -205,6 +225,20 @@ const AdminDashboardStats = async ({ utcDay }: { utcDay: string }) => {
         ) : (
           <DashboardEmpty>
             No attempts were submitted in the last 14 days (UTC).
+          </DashboardEmpty>
+        )}
+      </DashboardSection>
+
+      <DashboardSection id="admin-exam-starts" title="Exam start calendar">
+        {startsByDay.size ? (
+          <ExamStartsHeatmap
+            firstDay={utcDay}
+            lastDay={calendarLastDay}
+            countsByDay={startsByDay}
+          />
+        ) : (
+          <DashboardEmpty>
+            No published exams start in this 28-day window (UTC).
           </DashboardEmpty>
         )}
       </DashboardSection>

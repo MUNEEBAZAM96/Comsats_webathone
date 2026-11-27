@@ -6,6 +6,7 @@ import {
 } from "@/components/Dashboard/DashboardSection";
 import { StatusBreakdown } from "@/components/Dashboard/StatusBreakdown";
 import { StatCard } from "@/components/Dashboard/StatCard";
+import { BankDifficultyPie } from "@/components/Dashboard/BankDifficultyPie";
 import {
   ExaminerShellSkeleton,
   ExaminerDashboardSkeleton,
@@ -76,7 +77,11 @@ const getExaminerOverview = async (userId: string) => {
 
   return Promise.all([
     prisma.exam.groupBy({ by: ["status"], where: ownedExams, _count: true }),
-    prisma.bankQuestion.count({ where: { createdById: userId } }),
+    prisma.bankQuestion.groupBy({
+      by: ["difficulty"],
+      where: { createdById: userId },
+      _count: true,
+    }),
     prisma.examAssignment.groupBy({
       by: ["userId"],
       where: { exam: ownedExams },
@@ -101,7 +106,7 @@ const getExaminerOverview = async (userId: string) => {
 const ExaminerDashboardStats = async ({ userId }: { userId: string }) => {
   const pendingAttempt = { status: "submitted" };
   const [
-    [examCounts, questionCount, assignedCandidates, recentExams],
+    [examCounts, bankDifficulty, assignedCandidates, recentExams],
     markingQueue,
     attemptCounts,
   ] = await Promise.all([
@@ -124,6 +129,17 @@ const ExaminerDashboardStats = async ({ userId }: { userId: string }) => {
   ]);
 
   const totalExams = examCounts.reduce((sum, group) => sum + group._count, 0);
+  const questionCount = bankDifficulty.reduce(
+    (sum, group) => sum + group._count,
+    0,
+  );
+  const countsByDifficulty = new Map<string, number>();
+  for (const { difficulty, _count } of bankDifficulty) {
+    const key = ["easy", "medium", "hard"].includes(difficulty)
+      ? difficulty
+      : "other";
+    countsByDifficulty.set(key, (countsByDifficulty.get(key) ?? 0) + _count);
+  }
   const statusCount = (status: string) =>
     examCounts.find((group) => group.status === status)?._count ?? 0;
   const attemptCount = attemptCounts.reduce(
@@ -163,34 +179,34 @@ const ExaminerDashboardStats = async ({ userId }: { userId: string }) => {
         />
       </div>
 
-      <div className="dashboard-section grid gap-4 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
-        <DashboardSection id="examiner-marking" title="Marking queue">
-          {markingQueue.length ? (
-            <ul>
-              {markingQueue.map((exam) => (
-                <DashboardRow key={exam.id}>
-                  <div className="min-w-0 flex-1 basis-40">
-                    <p className="wrap-anywhere font-semibold">{exam.title}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {exam._count.attempts} awaiting marking
-                    </p>
-                  </div>
-                  <DashboardLink
-                    href={`/examiner/exams/${exam.id}/grading` as Route}
-                    variant="outline"
-                  >
-                    Grade
-                  </DashboardLink>
-                </DashboardRow>
-              ))}
-            </ul>
-          ) : (
-            <DashboardEmpty>
-              No submissions are waiting for manual marking.
-            </DashboardEmpty>
-          )}
-        </DashboardSection>
+      <DashboardSection id="examiner-marking" title="Marking queue">
+        {markingQueue.length ? (
+          <ul>
+            {markingQueue.map((exam) => (
+              <DashboardRow key={exam.id}>
+                <div className="min-w-0 flex-1 basis-40">
+                  <p className="wrap-anywhere font-semibold">{exam.title}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {exam._count.attempts} awaiting marking
+                  </p>
+                </div>
+                <DashboardLink
+                  href={`/examiner/exams/${exam.id}/grading` as Route}
+                  variant="outline"
+                >
+                  Grade
+                </DashboardLink>
+              </DashboardRow>
+            ))}
+          </ul>
+        ) : (
+          <DashboardEmpty>
+            No submissions are waiting for manual marking.
+          </DashboardEmpty>
+        )}
+      </DashboardSection>
 
+      <div className="dashboard-section grid gap-4 lg:grid-cols-2">
         <DashboardSection
           id="examiner-marking-progress"
           title="Marking progress"
@@ -233,6 +249,18 @@ const ExaminerDashboardStats = async ({ userId }: { userId: string }) => {
           ) : (
             <DashboardEmpty>
               Marking progress appears once candidates submit an attempt.
+            </DashboardEmpty>
+          )}
+        </DashboardSection>
+        <DashboardSection
+          id="examiner-bank-difficulty"
+          title="Question bank difficulty"
+        >
+          {questionCount ? (
+            <BankDifficultyPie counts={countsByDifficulty} />
+          ) : (
+            <DashboardEmpty>
+              Difficulty coverage appears once you add questions to the bank.
             </DashboardEmpty>
           )}
         </DashboardSection>

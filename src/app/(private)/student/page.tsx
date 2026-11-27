@@ -7,7 +7,7 @@ import {
   RotateCcwIcon,
   TargetIcon,
 } from "lucide-react";
-import { format } from "date-fns";
+import { differenceInSeconds, format, isBefore } from "date-fns";
 import { requireRole } from "@/server/session";
 import {
   getStudentExams,
@@ -22,10 +22,12 @@ import {
 } from "@/components/Dashboard/DashboardSection";
 import { StatCard } from "@/components/Dashboard/StatCard";
 import { DashboardTrend } from "@/components/Dashboard/DashboardTrend";
+import { AttemptPacingPlot } from "@/components/Dashboard/AttemptPacingPlot";
 import { DashboardShellSkeleton } from "@/components/Dashboard/DashboardShellSkeleton";
 import { CandidateExamAction } from "@/components/Student/CandidateExamAction";
 import { CandidateExamStateBadge } from "@/components/Student/CandidateExamStateBadge";
 import { groupCandidateExams } from "@/lib/exam/candidateBuckets";
+import { getEffectiveAttemptDeadline } from "@/lib/date/exam-time";
 import { formatScore } from "@/lib/exam/grading";
 import {
   formatDisplayDate,
@@ -114,6 +116,37 @@ const StudentDashboardContent = async () => {
   const recentActivity = completed
     .filter(({ eligibility }) => eligibility.state !== "time_up")
     .sort((a, b) => activityTimestamp(b) - activityTimestamp(a));
+
+  const recentPacing = recentActivity
+    .flatMap(({ attempt, duration, eligibility, endTime, title }) => {
+      if (
+        eligibility.action !== "view_result" ||
+        !attempt?.submittedAt ||
+        isBefore(attempt.submittedAt, attempt.startedAt)
+      )
+        return [];
+
+      const deadline = getEffectiveAttemptDeadline(
+        attempt.startedAt,
+        duration,
+        endTime,
+      );
+      const availableSeconds = differenceInSeconds(deadline, attempt.startedAt);
+      if (availableSeconds <= 0) return [];
+
+      return [
+        {
+          id: attempt.id,
+          title,
+          availableSeconds,
+          usedSeconds: Math.min(
+            availableSeconds,
+            differenceInSeconds(attempt.submittedAt, attempt.startedAt),
+          ),
+        },
+      ];
+    })
+    .slice(0, 5);
 
   const releasedScores = completed
     .flatMap(({ eligibility, resultsVisible, attempt, title }) =>
@@ -270,6 +303,16 @@ const StudentDashboardContent = async () => {
         ) : (
           <DashboardEmpty>
             The score trend appears after you have two released scores.
+          </DashboardEmpty>
+        )}
+      </DashboardSection>
+
+      <DashboardSection id="candidate-pacing" title="Time used and time left">
+        {recentPacing.length ? (
+          <AttemptPacingPlot attempts={recentPacing} />
+        ) : (
+          <DashboardEmpty>
+            Timing comparisons appear after you submit an exam attempt.
           </DashboardEmpty>
         )}
       </DashboardSection>
