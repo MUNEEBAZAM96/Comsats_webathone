@@ -15,6 +15,14 @@ const LoginPage = () => (
       description="Sign in to your ExamGuard workspace."
     />
     <LoginForm />
+    <p className="text-center text-sm text-muted-foreground">
+      <Link
+        href="/forgot-password"
+        className="font-semibold text-primary underline-offset-4 hover:underline"
+      >
+        Forgot your password?
+      </Link>
+    </p>
     <p className="border-t pt-3 sm:pt-4 text-center text-sm text-muted-foreground">
       New to ExamGuard?{" "}
       <Link

@@ -106,7 +106,10 @@ const SidebarLayout = ({
       </a>
       <SidebarInset className="workspace-shell min-w-0">
         <header className="workspace-topbar sticky top-0 z-10 flex min-h-16 shrink-0 items-center gap-2 border-b px-3 sm:gap-3 sm:px-6 lg:px-8">
-          <SidebarTrigger className="-ml-1 size-11 shrink-0" />
+          <SidebarTrigger
+            className="-ml-1 size-11 shrink-0"
+            aria-label="Toggle sidebar"
+          />
           <Separator
             orientation="vertical"
             className="h-6"

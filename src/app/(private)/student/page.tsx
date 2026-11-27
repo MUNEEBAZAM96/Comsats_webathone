@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Suspense } from "react";
 import {
   CalendarClockIcon,
+  ChartNoAxesCombinedIcon,
   FileTextIcon,
   GraduationCapIcon,
   RotateCcwIcon,
@@ -179,8 +180,15 @@ const StudentDashboardContent = async () => {
             <DashboardLink href="/student/exams">
               <FileTextIcon aria-hidden="true" /> My exams
             </DashboardLink>
-            <DashboardLink href="/student/results" variant="outline">
+            <DashboardLink
+              href="/student/results"
+              variant="outline">
               <GraduationCapIcon aria-hidden="true" /> My results
+            </DashboardLink>
+            <DashboardLink
+              href="/student/reports"
+              variant="outline">
+              <ChartNoAxesCombinedIcon aria-hidden="true" /> Performance
             </DashboardLink>
           </>
         }

@@ -3,7 +3,19 @@ import type { Route } from "next";
 export type NavItem = {
   title: string;
   url: Route;
-  icon: "LayoutDashboard" | "FileText" | "Users" | "BarChart3" | "BookOpen";
+  icon:
+    | "LayoutDashboard"
+    | "FileText"
+    | "Users"
+    | "BarChart3"
+    | "BookOpen"
+    | "Library"
+    | "ShieldCheck"
+    | "Award"
+    | "ChartNoAxesCombined"
+    | "Activity"
+    | "FileBarChart"
+    | "BookMarked";
   exact?: boolean;
 };
 
@@ -70,7 +82,7 @@ export const adminNav: NavGroup[] = [
     label: "Assessments",
     items: [
       { title: "Exams", url: "/admin/exams", icon: "FileText" },
-      { title: "Question Bank", url: "/admin/questions", icon: "BookOpen" },
+      { title: "Question Bank", url: "/admin/questions", icon: "Library" },
     ],
   },
   {
@@ -79,7 +91,7 @@ export const adminNav: NavGroup[] = [
   },
   {
     label: "Reports",
-    items: [{ title: "Results", url: "/admin/results", icon: "BarChart3" }],
+    items: [{ title: "Results", url: "/admin/results", icon: "FileBarChart" }],
   },
 ];
 
@@ -89,12 +101,14 @@ export const examinerNav: NavGroup[] = [
     label: "Assessments",
     items: [
       { title: "My Exams", url: "/examiner/exams", icon: "FileText" },
-      { title: "Question Bank", url: "/examiner/questions", icon: "BookOpen" },
+      { title: "Question Bank", url: "/examiner/questions", icon: "Library" },
     ],
   },
   {
     label: "Reports",
-    items: [{ title: "Results", url: "/examiner/results", icon: "BarChart3" }],
+    items: [
+      { title: "Results", url: "/examiner/results", icon: "FileBarChart" },
+    ],
   },
 ];
 
@@ -103,12 +117,18 @@ export const proctorNav: NavGroup[] = [
   {
     label: "Assessments",
     items: [
-      { title: "Assigned Exams", url: "/proctor/exams", icon: "FileText" },
+      {
+        title: "Assigned Exams",
+        url: "/proctor/exams",
+        icon: "ShieldCheck",
+      },
     ],
   },
   {
     label: "Reports",
-    items: [{ title: "Results", url: "/proctor/results", icon: "BarChart3" }],
+    items: [
+      { title: "Results", url: "/proctor/results", icon: "FileBarChart" },
+    ],
   },
 ];
 
@@ -118,14 +138,18 @@ export const studentNav: NavGroup[] = [
     label: "Assessments",
     items: [
       { title: "My Exams", url: "/student/exams", icon: "FileText" },
-      { title: "Practice", url: "/student/practice", icon: "FileText" },
+      { title: "Practice", url: "/student/practice", icon: "BookMarked" },
     ],
   },
   {
     label: "Reports",
     items: [
-      { title: "My Results", url: "/student/results", icon: "BarChart3" },
-      { title: "Performance", url: "/student/reports", icon: "BarChart3" },
+      { title: "My Results", url: "/student/results", icon: "Award" },
+      {
+        title: "Performance",
+        url: "/student/reports",
+        icon: "ChartNoAxesCombined",
+      },
     ],
   },
 ];

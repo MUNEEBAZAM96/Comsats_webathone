@@ -82,6 +82,25 @@ Record date, URL host (not secrets), and result:
 | --- | --- | --- | --- |
 | | | PASS / FAIL / BLOCKED | |
 
+## Production UI audit — Nov 27 2026
+
+Production URL: https://comsats-webathone.vercel.app
+
+- [ ] Sidebar icons are distinct per role (ShieldCheck for proctor exams, Award for student results, ChartNoAxesCombined for performance, Library for question bank, FileBarChart for staff results)
+- [ ] StatCard icon badge has accessible contrast (bg-muted + text-muted-foreground)
+- [ ] Empty states show icon + title + description in ExamsTable and ExamResultsView
+- [ ] Error pages on private routes link to role dashboard ("Go to dashboard") not sign-in
+- [ ] Student dashboard DashboardIntro shows Performance link to /student/reports
+- [ ] Forgot-password link present on sign-in page
+- [ ] not-found.tsx at app root renders correctly with StatusPanel
+- [ ] SidebarTrigger and avatar DropdownMenuTrigger have aria-label
+- [ ] Mobile: empty/error state text is readable inside ResponsiveTable scroll area
+- [ ] All stat card values formatted with Intl.NumberFormat
+
+| Date | URL host | Result | Notes |
+| --- | --- | --- | --- |
+| Nov 27 2026 | comsats-webathone.vercel.app | — | UI audit checklist added |
+
 ## Judge demo script (~12 minutes)
 
 1. Sign in as **admin** — show dashboard, users, question bank.

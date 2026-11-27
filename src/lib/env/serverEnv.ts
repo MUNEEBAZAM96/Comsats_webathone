@@ -37,5 +37,6 @@ export const serverEnv = createEnv({
       .optional(),
     AI_GRADING_REVIEW_THRESHOLD: z.coerce.number().min(0).max(1).optional(),
   },
+  emptyStringAsUndefined: true,
   experimental__runtimeEnv: process.env,
 });

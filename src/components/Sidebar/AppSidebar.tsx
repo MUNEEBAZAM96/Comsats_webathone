@@ -4,11 +4,18 @@ import Link from "next/link";
 import { BrandMark } from "@/components/BrandMark";
 import { usePathname } from "next/navigation";
 import {
+  ActivityIcon,
+  AwardIcon,
   BarChart3Icon,
+  BookMarkedIcon,
   BookOpenIcon,
+  ChartNoAxesCombinedIcon,
+  FileBarChartIcon,
   FileTextIcon,
   LayoutDashboardIcon,
+  LibraryIcon,
   SettingsIcon,
+  ShieldCheckIcon,
   UsersIcon,
   type LucideIcon,
 } from "lucide-react";
@@ -35,6 +42,13 @@ const iconMap: Record<string, LucideIcon> = {
   Users: UsersIcon,
   BarChart3: BarChart3Icon,
   BookOpen: BookOpenIcon,
+  Library: LibraryIcon,
+  ShieldCheck: ShieldCheckIcon,
+  Award: AwardIcon,
+  ChartNoAxesCombined: ChartNoAxesCombinedIcon,
+  Activity: ActivityIcon,
+  FileBarChart: FileBarChartIcon,
+  BookMarked: BookMarkedIcon,
 };
 
 const AppSidebar = ({

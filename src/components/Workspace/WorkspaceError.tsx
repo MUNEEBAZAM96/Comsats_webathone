@@ -1,9 +1,18 @@
 "use client";
 
 import { useEffect } from "react";
+import { usePathname } from "next/navigation";
 import { StatusPanel } from "@/components/Workspace/StatusPanel";
 import { Button } from "@/components/shadcnui/button";
 import Link from "next/link";
+import type { Route } from "next";
+
+const roleDashboards: { prefix: string; href: Route; label: string }[] = [
+  { prefix: "/admin", href: "/admin" as Route, label: "Go to dashboard" },
+  { prefix: "/examiner", href: "/examiner" as Route, label: "Go to dashboard" },
+  { prefix: "/proctor", href: "/proctor" as Route, label: "Go to dashboard" },
+  { prefix: "/student", href: "/student" as Route, label: "Go to dashboard" },
+];
 
 const ErrorPage = ({
   error,
@@ -16,9 +25,16 @@ const ErrorPage = ({
     console.error(error);
   }, [error]);
 
+  const pathname = usePathname();
+  const matched = roleDashboards.find(({ prefix }) =>
+    pathname.startsWith(prefix),
+  );
+  const homeHref: Route = matched?.href ?? ("/" as Route);
+  const homeLabel = matched?.label ?? "Go to sign-in";
+
   return (
     <StatusPanel
-      title="This page couldn’t load"
+      title="This page couldn't load"
       actions={
         <>
           <Button
@@ -29,9 +45,9 @@ const ErrorPage = ({
           <Button
             size="lg"
             variant="outline"
-            render={<Link href="/" />}
+            render={<Link href={homeHref} />}
             nativeButton={false}>
-            Go to sign-in
+            {homeLabel}
           </Button>
         </>
       }>

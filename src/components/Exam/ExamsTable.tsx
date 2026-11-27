@@ -1,11 +1,13 @@
 "use client";
 
+import { EmptyState } from "@/components/Workspace/EmptyState";
 import { ResponsiveTable } from "@/components/Workspace/ResponsiveTable";
 import {
   ActivityIcon,
   ClipboardCheckIcon,
   EditIcon,
   EyeIcon,
+  FileTextIcon,
   Loader2Icon,
   Trash2Icon,
 } from "lucide-react";
@@ -75,12 +77,20 @@ const ExamsTable = ({ exams, basePath }: ExamsTableProps) => {
 
   if (exams.length === 0) {
     return (
-      <div className="flex flex-col items-center gap-4 py-16 text-center">
-        <p className="text-muted-foreground text-lg">No exams yet</p>
-        <Link href={`${basePath}/exams/new` as Route}>
-          <Button variant="default">Create your first exam</Button>
-        </Link>
-      </div>
+      <EmptyState
+        icon={<FileTextIcon />}
+        title="No exams yet"
+        description="Create your first exam to get started."
+        action={
+          <Link href={`${basePath}/exams/new` as Route}>
+            <Button
+              size="lg"
+              variant="outline">
+              Create your first exam
+            </Button>
+          </Link>
+        }
+      />
     );
   }
 

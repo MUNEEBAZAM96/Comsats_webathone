@@ -5,6 +5,7 @@ import { loginFormSchema, LoginFormType } from "@/lib/zodSchema";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { EyeIcon, EyeOffIcon, Loader2Icon, LogInIcon } from "lucide-react";
 import { useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Controller, useForm } from "react-hook-form";
 import { toast } from "sonner";
@@ -147,27 +148,38 @@ const LoginForm = () => {
         )}
       />
 
-      {/* Remember Me checkbox */}
-      <Controller
-        name="rememberMe"
-        control={control}
-        render={({ field, fieldState }) => (
-          <Field data-invalid={fieldState.invalid} orientation={"horizontal"}>
-            <Checkbox
-              id={field.name}
-              aria-labelledby="remember-me-label"
-              checked={field.value}
-              onCheckedChange={(checked) => field.onChange(checked)}
-              className="cursor-pointer"
-            />
-            <FieldLabel id="remember-me-label" htmlFor={field.name}>
-              Keep me signed in
-            </FieldLabel>
-
-            {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
-          </Field>
-        )}
-      />
+      {/* Remember Me + forgot password */}
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <Controller
+          name="rememberMe"
+          control={control}
+          render={({ field, fieldState }) => (
+            <Field
+              data-invalid={fieldState.invalid}
+              orientation={"horizontal"}
+              className="w-auto">
+              <Checkbox
+                id={field.name}
+                aria-labelledby="remember-me-label"
+                checked={field.value}
+                onCheckedChange={(checked) => field.onChange(checked)}
+                className="cursor-pointer"
+              />
+              <FieldLabel
+                id="remember-me-label"
+                htmlFor={field.name}>
+                Keep me signed in
+              </FieldLabel>
+              {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
+            </Field>
+          )}
+        />
+        <Link
+          href="/forgot-password"
+          className="text-primary text-sm font-medium hover:underline">
+          Forgot password?
+        </Link>
+      </div>
 
       {errors.root?.message && (
         <p

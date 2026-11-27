@@ -1,4 +1,5 @@
 import { Button } from "@/components/shadcnui/button";
+import { EmptyState } from "@/components/Workspace/EmptyState";
 import { PublishResultsControls } from "@/components/Grading/PublishResultsControls";
 import ResultSettingsForm from "@/components/Grading/ResultSettingsForm";
 import { ResponsiveTable } from "@/components/Workspace/ResponsiveTable";
@@ -19,6 +20,7 @@ import {
   ArrowLeftIcon,
   ClipboardCheckIcon,
   EyeIcon,
+  UsersIcon,
 } from "lucide-react";
 import type { Route } from "next";
 import Link from "next/link";
@@ -101,12 +103,11 @@ export const ExamResultsView = async ({
       {analytics && <ExamAnalyticsCharts data={analytics} />}
 
       {data.attempts.length === 0 ? (
-        <div className="flex flex-col items-center gap-4 py-16 text-center">
-          <p className="text-muted-foreground text-lg">No results yet</p>
-          <p className="text-muted-foreground text-sm">
-            Students haven&apos;t submitted any attempts for this exam.
-          </p>
-        </div>
+        <EmptyState
+          icon={<UsersIcon />}
+          title="No results yet"
+          description="Students haven't submitted any attempts for this exam."
+        />
       ) : (
         <ResponsiveTable aria-label="Exam results">
           <table className="w-full min-w-[52rem] text-sm">
