@@ -1,8 +1,18 @@
-import type { Metadata, Route } from "next";
-import { addMinutes, format, isAfter, isBefore } from "date-fns";
-import { Suspense } from "react";
-import Link from "next/link";
+import type { Metadata } from "next";
+import { format, isAfter } from "date-fns";
+import { requireRole } from "@/server/session";
+import prisma from "@/lib/database/dbClient";
 import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/components/shadcnui/card";
+import { Button } from "@/components/shadcnui/button";
+import { Badge } from "@/components/shadcnui/badge";
+import { StatCard } from "@/components/Dashboard/StatCard";
+import {
+  ClockIcon,
   FileTextIcon,
   GraduationCapIcon,
   PlayIcon,
@@ -29,17 +39,13 @@ const StudentDashboardContent = async () => {
   const session = await requireRole("student");
   const userId = session.user.id;
 
-const StudentDashboardContent = async () => {
-  const { user } = await requireRole("student");
-  const userId = user.id;
   const [assignments, attempts, recentAttempts] = await Promise.all([
     prisma.examAssignment.findMany({
       where: { userId },
-      orderBy: { assignedAt: "desc" },
-      select: {
-        examId: true,
+      include: {
         exam: {
           select: {
+            id: true,
             title: true,
             status: true,
             duration: true,
@@ -52,24 +58,18 @@ const StudentDashboardContent = async () => {
     prisma.examAttempt.findMany({
       where: { userId },
       select: {
+        id: true,
         examId: true,
         status: true,
         autoScore: true,
         maxScore: true,
-        startedAt: true,
       },
     }),
     prisma.examAttempt.findMany({
       where: { userId, status: { in: ["submitted", "graded"] } },
       take: 5,
       orderBy: { submittedAt: { sort: "desc", nulls: "last" } },
-      select: {
-        id: true,
-        submittedAt: true,
-        status: true,
-        totalScore: true,
-        autoScore: true,
-        maxScore: true,
+      include: {
         exam: { select: { title: true } },
       },
     }),
@@ -77,231 +77,210 @@ const StudentDashboardContent = async () => {
 
   const now = new Date();
   const completedAttempts = attempts.filter(
-    ({ status }) => status === "submitted" || status === "graded",
+    (a) => a.status === "submitted" || a.status === "graded",
   );
-  const inProgressAttempts = attempts.filter(
-    ({ status }) => status === "in_progress",
+  const inProgressAttempts = attempts.filter((a) => a.status === "in_progress");
+  const attemptExamIds = new Set(attempts.map((a) => a.examId));
+  const pendingExams = assignments.filter(
+    (a) =>
+      a.exam.status === "published" &&
+      !attemptExamIds.has(a.examId) &&
+      (!a.exam.startTime || !isAfter(a.exam.startTime, now)) &&
+      (!a.exam.endTime || isAfter(a.exam.endTime, now)),
   );
-  const attemptByExam = new Map(
-    attempts.map((attempt) => [attempt.examId, attempt]),
+  const upcomingExams = assignments.filter(
+    (a) =>
+      a.exam.status === "published" &&
+      !attemptExamIds.has(a.examId) &&
+      a.exam.startTime &&
+      isAfter(a.exam.startTime, now),
   );
-  const publishedAssignments = assignments.filter(
-    ({ exam }) => exam.status === "published",
-  );
-  const pendingExams = publishedAssignments.filter(
-    ({ examId, exam }) =>
-      !attemptByExam.has(examId) &&
-      (!exam.startTime || !isBefore(now, exam.startTime)) &&
-      (!exam.endTime || !isAfter(now, exam.endTime)),
-  );
-  const upcomingExams = publishedAssignments.filter(
-    ({ examId, exam }) =>
-      !attemptByExam.has(examId) &&
-      exam.startTime &&
-      isBefore(now, exam.startTime),
-  );
-  // Match startExam's resume rules, including the attempt's own time limit.
-  const resumableExams = publishedAssignments.filter(({ examId, exam }) => {
-    const attempt = attemptByExam.get(examId);
-    return (
-      attempt?.status === "in_progress" &&
-      (!exam.endTime || !isAfter(now, exam.endTime)) &&
-      !isAfter(now, addMinutes(attempt.startedAt, exam.duration))
-    );
-  });
-  const nextExam = resumableExams[0] ?? pendingExams[0];
-  const average = completedAttempts.length
-    ? Math.round(
+
+  const avgScore =
+    completedAttempts.length > 0 ?
+      Math.round(
         completedAttempts.reduce((sum, a) => sum + (a.autoScore ?? 0), 0) /
           completedAttempts.length,
       )
     : null;
-  const averageMax = completedAttempts.length
-    ? Math.round(
+
+  const maxAvgScore =
+    completedAttempts.length > 0 ?
+      Math.round(
         completedAttempts.reduce((sum, a) => sum + (a.maxScore ?? 1), 0) /
           completedAttempts.length,
       )
     : null;
 
   return (
-    <section className="grid gap-6">
-      <DashboardIntro title="Candidate overview">
-        Open your assigned exams and review your results.
-      </DashboardIntro>
-
-      <DashboardSection
-        id="next-exam"
-        title="Next action"
-        action={
-          nextExam && (
-            <ExamLink
-              examId={nextExam.examId}
-              resume={resumableExams.length > 0}
-              primary
-            />
-          )
-        }>
-        <p className="break-words text-sm text-muted-foreground">
-          {nextExam ? (
-            <>
-              <span className="font-semibold text-foreground">
-                {nextExam.exam.title}
-              </span>{" "}
-              · {nextExam.exam.duration} min
-            </>
-          ) : assignments.length ? (
-            "No exams are available to start or resume right now."
-          ) : (
-            "You haven’t been assigned any exams yet. Contact your examiner if you’re expecting an exam."
-          )}
+    <section className="grid gap-8">
+      <div>
+        <h1 className="text-2xl font-medium">Student Dashboard</h1>
+        <p className="text-muted-foreground">
+          Welcome back, {session?.user.name}
         </p>
-      </DashboardSection>
-
-      {resumableExams.length > 0 && (
-        <DashboardSection
-          id="continue-exams"
-          title="Continue exams">
-          <ul>
-            {resumableExams.map(({ examId, exam }) => (
-              <DashboardRow key={examId}>
-                <p className="min-w-0 flex-1 basis-40 break-words font-medium">
-                  {exam.title}
-                </p>
-                <ExamLink
-                  examId={examId}
-                  resume
-                />
-              </DashboardRow>
-            ))}
-          </ul>
-        </DashboardSection>
-      )}
-
-      <div className="grid items-start gap-4 lg:grid-cols-2">
-        <DashboardSection
-          id="available-exams"
-          title="Available exams">
-          {pendingExams.length ? (
-            <ul>
-              {pendingExams.map(({ examId, exam }) => (
-                <DashboardRow key={examId}>
-                  <div className="min-w-0 flex-1 basis-40">
-                    <p className="break-words font-medium">{exam.title}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {exam.duration} min
-                      {exam.endTime &&
-                        ` · ends ${format(exam.endTime, "MMM d, yyyy 'at' p")}`}
-                    </p>
-                  </div>
-                  <ExamLink
-                    examId={examId}
-                    resume={false}
-                  />
-                </DashboardRow>
-              ))}
-            </ul>
-          ) : (
-            <p className="text-sm text-muted-foreground">
-              No exams are ready to start.
-            </p>
-          )}
-        </DashboardSection>
-
-        <DashboardSection
-          id="upcoming-exams"
-          title="Upcoming exams">
-          {upcomingExams.length ? (
-            <ul>
-              {upcomingExams.map(({ examId, exam }) => (
-                <DashboardRow key={examId}>
-                  <div className="min-w-0 flex-1 basis-40">
-                    <p className="break-words font-medium">{exam.title}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {exam.duration} min
-                      {exam.startTime &&
-                        ` · starts ${format(exam.startTime, "MMM d, yyyy 'at' p")}`}
-                    </p>
-                  </div>
-                  <span className="text-xs font-medium text-muted-foreground">
-                    Scheduled
-                  </span>
-                </DashboardRow>
-              ))}
-            </ul>
-          ) : (
-            <p className="text-sm text-muted-foreground">
-              You have no upcoming exams.
-            </p>
-          )}
-        </DashboardSection>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
-          icon={<FileTextIcon className="size-6 text-primary" />}
+          icon={<FileTextIcon className="text-primary size-6" />}
           label="Pending Exams"
           value={pendingExams.length}
         />
         <StatCard
-          icon={<RotateCcwIcon className="size-6 text-primary" />}
+          icon={<RotateCcwIcon className="text-primary size-6" />}
           label="In Progress"
           value={inProgressAttempts.length}
         />
         <StatCard
-          icon={<GraduationCapIcon className="size-6 text-primary" />}
+          icon={<GraduationCapIcon className="text-primary size-6" />}
           label="Completed"
           value={completedAttempts.length}
         />
         <StatCard
-          icon={<TargetIcon className="size-6 text-primary" />}
-          label="Avg Auto Score"
-          value={average !== null ? `${average}/${averageMax}` : "—"}
+          icon={<TargetIcon className="text-primary size-6" />}
+          label="Avg Score"
+          value={avgScore !== null ? `${avgScore}/${maxAvgScore}` : "—"}
         />
       </div>
 
-      <DashboardSection
-        id="recent-results"
-        title="Recent results">
-        {recentAttempts.length ? (
-          <ul>
-            {recentAttempts.map((attempt) => (
-              <DashboardRow key={attempt.id}>
-                <div className="min-w-0 flex-1 basis-40">
-                  <Link
-                    className="break-words text-sm font-medium underline-offset-4 hover:underline"
-                    href={`/student/results/${attempt.id}`}>
-                    {attempt.exam.title}
-                  </Link>
-                  {attempt.submittedAt && (
-                    <p className="text-xs text-muted-foreground">
-                      {format(attempt.submittedAt, "MMM d, yyyy")}
+      {pendingExams.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Ready to Start</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-3">
+              {pendingExams.map((a) => (
+                <div
+                  key={a.examId}
+                  className="border-border flex items-center justify-between gap-4 rounded-3xl border p-4">
+                  <div>
+                    <p className="font-medium">{a.exam.title}</p>
+                    <p className="text-muted-foreground text-xs">
+                      {a.exam.duration} min
+                      {a.exam.endTime &&
+                        ` · ends ${format(a.exam.endTime, "MMM d, yyyy")}`}
                     </p>
-                  )}
+                  </div>
+                  <Link href={`/student/exams/${a.exam.id}` as Route}>
+                    <Button size="lg">
+                      <PlayIcon className="size-4" /> Start
+                    </Button>
+                  </Link>
                 </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-xs font-medium">
-                    {attempt.totalScore ?? attempt.autoScore ?? "—"}/
-                    {attempt.maxScore}
-                  </span>
-                  <StatusBadge status={attempt.status} />
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {upcomingExams.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Upcoming Exams</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-3">
+              {upcomingExams.map((a) => (
+                <div
+                  key={a.examId}
+                  className="border-border flex items-center justify-between gap-4 rounded-3xl border p-4">
+                  <div>
+                    <p className="font-medium">{a.exam.title}</p>
+                    <p className="text-muted-foreground text-xs">
+                      {a.exam.duration} min
+                      {a.exam.startTime &&
+                        ` · starts ${format(a.exam.startTime, "MMM d, yyyy")}`}
+                    </p>
+                  </div>
+                  <Button
+                    size="lg"
+                    disabled>
+                    <ClockIcon className="size-4" /> Scheduled
+                  </Button>
                 </div>
-              </DashboardRow>
-            ))}
-          </ul>
-        ) : (
-          <p className="text-sm text-muted-foreground">
-            Complete an exam to see your results here.
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {inProgressAttempts.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Continue Exams</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-3">
+              {inProgressAttempts.slice(0, 5).map((a) => (
+                <div
+                  key={a.id}
+                  className="border-border flex items-center justify-between gap-4 rounded-3xl border p-4">
+                  <div>
+                    <p className="font-medium">Exam in progress</p>
+                  </div>
+                  <Link href={`/student/exams` as Route}>
+                    <Button size="lg">
+                      <RotateCcwIcon className="size-4" /> Resume
+                    </Button>
+                  </Link>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {recentAttempts.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Recent Results</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-2">
+              {recentAttempts.map((a) => (
+                <div
+                  key={a.id}
+                  className="border-border flex items-center justify-between gap-2 border-b pb-2 last:border-0 last:pb-0">
+                  <div>
+                    <p className="text-sm font-medium">{a.exam.title}</p>
+                    <p className="text-muted-foreground text-xs">
+                      {a.submittedAt ?
+                        format(a.submittedAt, "MMM d, yyyy")
+                      : "—"}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {a.autoScore !== null && (
+                      <span className="text-xs font-medium">
+                        {a.autoScore}/{a.maxScore}
+                      </span>
+                    )}
+                    <Badge
+                      variant={a.status === "graded" ? "default" : "outline"}>
+                      {a.status === "graded" ? "Graded" : "Submitted"}
+                    </Badge>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {assignments.length === 0 && (
+        <Card className="p-8 text-center">
+          <p className="text-muted-foreground mb-4">
+            You haven&apos;t been assigned any exams yet.
           </p>
-        )}
-      </DashboardSection>
+          <p className="text-muted-foreground text-xs">
+            Contact your examiner to get started.
+          </p>
+        </Card>
+      )}
     </section>
   );
 };
-
-const StudentDashboard = () => (
-  <Suspense fallback={<ActivityDashboardSkeleton />}>
-    <StudentDashboardContent />
-  </Suspense>
-);
 
 export default StudentDashboard;

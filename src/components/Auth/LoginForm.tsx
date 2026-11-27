@@ -7,7 +7,7 @@ import { ArrowRightIcon, EyeIcon, EyeOffIcon, Loader2Icon } from "lucide-react";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Controller, useForm } from "react-hook-form";
-import { toast } from "react-toastify";
+import { toast } from "sonner";
 import AuthTestBanner from "./AuthTestBanner";
 import { Button } from "../shadcnui/button";
 import { Checkbox } from "../shadcnui/checkbox";

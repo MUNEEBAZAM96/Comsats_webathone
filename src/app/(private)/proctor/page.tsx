@@ -1,5 +1,4 @@
-import type { Metadata, Route } from "next";
-import { Suspense } from "react";
+import type { Metadata } from "next";
 import {
   EyeIcon,
   FileTextIcon,
@@ -7,14 +6,15 @@ import {
   UsersIcon,
 } from "lucide-react";
 import { requireRole } from "@/server/session";
+import Link from "next/link";
 import { Badge } from "@/components/shadcnui/badge";
-import { DashboardLink } from "@/components/Dashboard/DashboardLink";
+import { Button } from "@/components/shadcnui/button";
 import {
-  DashboardRow,
-  DashboardSection,
-} from "@/components/Dashboard/DashboardSection";
-import { ActivityDashboardSkeleton } from "@/components/Dashboard/DashboardShellSkeleton";
-import { DashboardIntro } from "@/components/Dashboard/DashboardIntro";
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/components/shadcnui/card";
 import { StatCard } from "@/components/Dashboard/StatCard";
 import prisma from "@/lib/database/dbClient";
 import type { Route } from "next";
@@ -37,7 +37,6 @@ const ProctorDashboardContent = async () => {
 
   const proctorAssignments = await prisma.examProctor.findMany({
     where: { proctorId: session.user.id },
-    orderBy: { assignedAt: "desc" },
     include: {
       exam: {
         select: {
@@ -52,20 +51,12 @@ const ProctorDashboardContent = async () => {
 
   const examIds = proctorAssignments.map((pa) => pa.examId);
 
-  const activeAttempts = examIds.length
-    ? await prisma.examAttempt.groupBy({
-        by: ["examId"],
+  const inProgressCount =
+    examIds.length > 0 ?
+      await prisma.examAttempt.count({
         where: { examId: { in: examIds }, status: "in_progress" },
-        _count: true,
       })
-    : [];
-  const activeCountByExam = new Map(
-    activeAttempts.map(({ examId, _count }) => [examId, _count]),
-  );
-  const inProgressCount = activeAttempts.reduce(
-    (sum, exam) => sum + exam._count,
-    0,
-  );
+    : 0;
 
   const totalExams = proctorAssignments.length;
   const totalStudents = proctorAssignments.reduce(
@@ -77,109 +68,125 @@ const ProctorDashboardContent = async () => {
     0,
   );
 
-  const examsWithActivity = proctorAssignments
-    .filter(({ examId }) => activeCountByExam.has(examId))
-    .sort(
-      (a, b) =>
-        (activeCountByExam.get(b.examId) ?? 0) -
-        (activeCountByExam.get(a.examId) ?? 0),
-    );
-  const featuredExam =
-    examsWithActivity[0] ??
-    proctorAssignments.find(({ exam }) => exam.status === "published") ??
-    proctorAssignments[0];
+  const examsWithActivity = proctorAssignments.filter(
+    (pa) => pa.exam.status === "published" && pa.exam._count.attempts > 0,
+  );
 
   return (
-    <section className="grid gap-6">
-      <DashboardIntro
-        title="Proctor overview"
-        action={
-          featuredExam && (
-            <MonitorLink
-              examId={featuredExam.examId}
-              primary
-            />
-          )
-        }>
-        Monitor assigned exams and review candidate progress.
-      </DashboardIntro>
+    <section className="grid gap-8">
+      <div>
+        <h1 className="text-2xl font-medium">Proctor Dashboard</h1>
+        <p className="text-muted-foreground">
+          Welcome back, {session?.user.name}
+        </p>
+      </div>
 
-      <DashboardSection
-        id="exam-activity"
-        title="Exam activity">
-        {examsWithActivity.length ? (
-          <ul>
-            {examsWithActivity.map(({ examId, exam }) => (
-              <DashboardRow key={examId}>
-                <div className="min-w-0 flex-1 basis-44">
-                  <p className="break-words font-medium">{exam.title}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {activeCountByExam.get(examId)} in progress ·{" "}
-                    {exam._count.attempts} total attempts
-                  </p>
-                </div>
-                <MonitorLink examId={examId} />
-              </DashboardRow>
-            ))}
-          </ul>
-        ) : (
-          <p className="text-sm text-muted-foreground">
-            {totalExams
-              ? "No attempts are currently marked in progress."
-              : "You haven’t been assigned to any exams yet."}
-          </p>
-        )}
-      </DashboardSection>
-
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
-          icon={<FileTextIcon className="size-6 text-primary" />}
+          icon={<FileTextIcon className="text-primary size-6" />}
           label="Assigned Exams"
           value={totalExams}
         />
         <StatCard
-          icon={<UsersIcon className="size-6 text-primary" />}
-          label="Student Assignments"
+          icon={<UsersIcon className="text-primary size-6" />}
+          label="Total Students"
           value={totalStudents}
         />
         <StatCard
-          icon={<GraduationCapIcon className="size-6 text-primary" />}
+          icon={<GraduationCapIcon className="text-primary size-6" />}
           label="Total Attempts"
           value={totalAttempts}
         />
         <StatCard
-          icon={<EyeIcon className="size-6 text-primary" />}
-          label="In Progress"
+          icon={<EyeIcon className="text-primary size-6" />}
+          label="Active Now"
           value={inProgressCount}
         />
       </div>
 
+      {examsWithActivity.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Live Activity</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-2">
+              {examsWithActivity.map((pa) => (
+                <div
+                  key={pa.id}
+                  className="border-border flex items-center justify-between gap-4 rounded-3xl border p-4">
+                  <div>
+                    <p className="font-medium">
+                      {pa.exam.title || `Exam ${pa.examId}`}
+                    </p>
+                    <p className="text-muted-foreground text-xs">
+                      {pa.exam._count.assignments} students &middot;{" "}
+                      {pa.exam._count.attempts} attempt(s)
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="relative flex size-2">
+                      <span className="absolute inline-flex size-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+                      <span className="relative inline-flex size-2 rounded-full bg-emerald-500" />
+                    </span>
+                    <Badge variant="outline">
+                      {pa.exam._count.attempts} active
+                    </Badge>
+                    <Link href={`/proctor/exams/${pa.examId}` as Route}>
+                      <Button
+                        variant="outline"
+                        size="lg">
+                        <EyeIcon className="size-4" /> Monitor
+                      </Button>
+                    </Link>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {totalExams === 0 && (
+        <Card className="p-8 text-center">
+          <p className="text-muted-foreground mb-4">
+            You haven&apos;t been assigned to any exams yet.
+          </p>
+        </Card>
+      )}
+
       {totalExams > 0 && (
-        <DashboardSection
-          id="assigned-exams"
-          title="Assigned exams">
-          <ul>
-            {proctorAssignments.map(({ examId, exam }) => (
-              <DashboardRow key={examId}>
-                <div className="min-w-0 flex-1 basis-44">
-                  <p className="break-words font-medium">{exam.title}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {exam._count.assignments} students · {exam._count.attempts}{" "}
-                    total attempts
-                  </p>
+        <Card>
+          <CardHeader>
+            <CardTitle>Your Assigned Exams</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-3">
+              {proctorAssignments.map((pa) => (
+                <div
+                  key={pa.id}
+                  className="border-border bg-card flex items-center justify-between gap-4 rounded-3xl border p-4">
+                  <div>
+                    <p className="font-medium">
+                      {pa.exam.title || `Exam ${pa.examId}`}
+                    </p>
+                    <p className="text-muted-foreground text-xs">
+                      {pa.exam._count.assignments} students &middot;{" "}
+                      {pa.exam._count.attempts} attempt(s)
+                    </p>
+                  </div>
+                  <Link href={`/proctor/exams/${pa.examId}` as Route}>
+                    <Button
+                      variant="outline"
+                      size="lg">
+                      <EyeIcon className="size-4" /> Monitor
+                    </Button>
+                  </Link>
                 </div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <Badge
-                    variant="secondary"
-                    className="capitalize">
-                    {exam.status}
-                  </Badge>
-                  <MonitorLink examId={examId} />
-                </div>
-              </DashboardRow>
-            ))}
-          </ul>
-        </DashboardSection>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
       )}
     </section>
   );

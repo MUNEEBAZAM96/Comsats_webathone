@@ -1,6 +1,13 @@
 import AuthTestBanner from "@/components/Auth/AuthTestBanner";
 import RegisterForm from "@/components/Auth/RegisterForm";
-import { AuthHeading } from "@/components/Auth/AuthHeading";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "@/components/shadcnui/card";
 import { Metadata } from "next";
 import Link from "next/link";
 

@@ -8,7 +8,7 @@ import { redirect } from "next/navigation";
 export const instant = false;
 
 const PrivateLayout = ({ children }: LayoutProps) => (
-  <Suspense fallback={<PrivateLayoutFallback />}>
+  <Suspense fallback={null}>
     <AuthGate>{children}</AuthGate>
   </Suspense>
 );
