@@ -457,7 +457,6 @@
     background: var(--brand-panel);
     color: var(--brand-panel-foreground);
     box-shadow: none;
-    animation: story-in 500ms var(--ease-standard) both;
     z-index: 1;
   }
 
@@ -502,7 +501,6 @@
 
   .auth-desktop-brand [data-brand-icon] {
     transform-origin: center;
-    animation: brand-icon-breathe 3.8s ease-in-out infinite;
     transition: rotate var(--motion-normal) var(--ease-standard);
   }
 
@@ -519,25 +517,11 @@
 
   .auth-artwork {
     max-height: min(27dvh, 19rem);
-    animation: artwork-in 680ms var(--ease-standard) both;
   }
 
   .auth-artwork-documents {
     filter: drop-shadow(0 8px 10px rgb(0 0 0 / .38));
-    transform-box: fill-box;
-    transform-origin: center;
-    animation: artwork-float 5s ease-in-out infinite;
   }
-
-  .auth-artwork-documents > circle {
-    transform-box: fill-box;
-    transform-origin: center;
-    animation: artwork-pulse 3.2s ease-in-out infinite;
-  }
-
-  .auth-artwork > circle { animation: artwork-twinkle 2.8s ease-in-out infinite alternate; }
-  .auth-artwork > circle:nth-of-type(2) { animation-delay: .6s; }
-  .auth-artwork > circle:nth-of-type(3) { animation-delay: 1.2s; }
 
   .auth-features {
     display: flex;
@@ -582,13 +566,75 @@
   }
 
   .auth-features li:hover { translate: 0 -2px; background: color-mix(in srgb, var(--brand-panel-foreground) 12%, transparent); }
-  .auth-artwork-documents:hover { animation-play-state: paused; }
 
   .workspace-table tbody tr:hover { background: var(--accent); }
 }
 
 @media (prefers-reduced-motion: no-preference) {
   html { scroll-behavior: smooth; }
+
+  .auth-desktop-brand,
+  .auth-story-content > h2,
+  .auth-story-content > p,
+  .auth-features,
+  .auth-form-position {
+    animation: surface-in 560ms var(--ease-standard) backwards;
+  }
+
+  .auth-story-content > h2 { animation-delay: 70ms; }
+  .auth-story-content > p { animation-delay: 140ms; }
+  .auth-features { animation-delay: 250ms; }
+  .auth-form-position { animation-delay: 80ms; }
+  .auth-artwork { animation: artwork-in 700ms var(--ease-standard) 190ms backwards; }
+
+  :is(
+    .auth-artwork-documents,
+    .auth-artwork-back-page,
+    .auth-artwork-middle-page,
+    .auth-artwork-seal,
+    .auth-artwork-dot
+  ) {
+    transform-box: fill-box;
+    transform-origin: center;
+  }
+
+  .auth-artwork-documents { animation: artwork-float 5.8s ease-in-out infinite; }
+  .auth-artwork-back-page { animation: artwork-page-sway 5.8s ease-in-out infinite alternate; }
+  .auth-artwork-middle-page { animation: artwork-page-sway 5.8s ease-in-out -2.9s infinite alternate-reverse; }
+  .auth-artwork-seal { animation: artwork-pulse 6.4s ease-in-out infinite; }
+
+  .auth-artwork-check:nth-of-type(2) { --check-delay: 580ms; }
+  .auth-artwork-check:nth-of-type(3) { --check-delay: 1160ms; }
+  .auth-artwork-tick {
+    stroke-dasharray: 1;
+    animation: artwork-check-draw 6.4s var(--ease-standard) var(--check-delay, 0ms) infinite both;
+  }
+  .auth-artwork-checkbox {
+    animation: artwork-checkbox-fill 6.4s ease var(--check-delay, 0ms) infinite both;
+  }
+
+  .auth-artwork-dot { animation: artwork-twinkle 2.8s ease-in-out infinite alternate; }
+
+  @supports (offset-path: path("M 0 0 L 1 1")) {
+    .auth-artwork-dot {
+      offset-anchor: center;
+      offset-rotate: 0deg;
+      offset-path: path("M37 167a223 121 0 1 1 446 0a223 121 0 1 1 -446 0");
+      animation: artwork-orbit 19s linear -2s infinite;
+    }
+    .auth-artwork-dot:nth-of-type(2) {
+      offset-path: path("M83 167a177 121 0 1 1 354 0a177 121 0 1 1 -354 0");
+      animation: artwork-orbit 16s linear -6s infinite reverse;
+    }
+    .auth-artwork-dot:nth-of-type(3) {
+      offset-path: path("M139 167a121 121 0 1 1 242 0a121 121 0 1 1 -242 0");
+      animation: artwork-orbit 13s linear -4s infinite;
+    }
+  }
+
+  .auth-illustration[data-paused] :is(.auth-artwork, .auth-artwork *) {
+    animation-play-state: paused;
+  }
 
   :is([data-slot="button"], .workspace-account, .workspace-nav-item, .exam-question-number):not(:disabled, [aria-disabled="true"]):active {
     transform: scale(.98);
@@ -618,29 +664,41 @@
   }
 }
 
-@keyframes story-in {
-  from { opacity: .7; translate: -10px 0; }
-  to { opacity: 1; translate: 0 0; }
-}
-
 @keyframes artwork-float {
   0%, 100% { translate: 0 0; rotate: 0deg; }
-  50% { translate: 0 -4px; rotate: .4deg; }
+  50% { translate: 0 -8px; rotate: .7deg; }
+}
+
+@keyframes artwork-page-sway {
+  from { translate: 0 2px; rotate: -.8deg; }
+  to { translate: 0 -4px; rotate: 1.4deg; }
 }
 
 @keyframes artwork-pulse {
-  0%, 100% { scale: 1; }
-  50% { scale: 1.05; }
+  0%, 30%, 55%, 100% { scale: 1; }
+  42% { scale: 1.045; }
 }
 
 @keyframes artwork-twinkle {
-  from { opacity: .55; scale: .85; }
-  to { opacity: 1; scale: 1.15; }
+  from { opacity: .55; }
+  to { opacity: 1; }
 }
 
-@keyframes brand-icon-breathe {
-  0%, 100% { scale: 1; }
-  50% { scale: 1.06; }
+@keyframes artwork-orbit {
+  from { offset-distance: 0%; }
+  to { offset-distance: 100%; }
+}
+
+@keyframes artwork-check-draw {
+  0%, 8% { opacity: 0; stroke-dashoffset: 1; }
+  10% { opacity: 1; }
+  17%, 82% { opacity: 1; stroke-dashoffset: 0; }
+  91%, 100% { opacity: 0; stroke-dashoffset: 0; }
+}
+
+@keyframes artwork-checkbox-fill {
+  0%, 8%, 91%, 100% { fill: var(--brand-panel-foreground); }
+  17%, 82% { fill: color-mix(in srgb, var(--brand-panel) 12%, var(--brand-panel-foreground)); }
 }
 
 :is([data-slot="dialog-content"], [data-slot="alert-dialog-content"]) {
