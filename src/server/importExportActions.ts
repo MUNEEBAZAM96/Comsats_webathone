@@ -335,9 +335,14 @@ export const exportExamResultsAction = async (
     attempts.map((a) => ({
       studentName: a.user.name,
       studentEmail: a.user.email,
+      status: a.status,
+      autoScore: a.autoScore,
+      manualScore: a.manualScore,
       totalScore: a.totalScore,
       maxScore: a.maxScore,
       submittedAt: a.submittedAt,
+      gradedAt: a.gradedAt,
+      submitSource: a.submitSource,
     })),
     format,
   );

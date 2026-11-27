@@ -4,6 +4,8 @@ import {
   type BankQuestionFormType,
   bankQuestionFormSchema,
 } from "@/lib/zodSchema";
+import { resolveMultiSelectRule } from "@/lib/exam/grading";
+import { parseMarkingScheme } from "@/lib/exam/markingScheme";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Loader2Icon } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -19,8 +21,12 @@ const questionTypes = [
   { value: "multiple_choice", label: "Multiple Select" },
   { value: "single_choice", label: "Single Answer" },
   { value: "true_false", label: "True / False" },
-  { value: "short_answer", label: "Written Response" },
+  { value: "short_answer", label: "Short Answer" },
+  { value: "long_answer", label: "Long Answer (marked by examiner)" },
 ];
+
+const selectClass =
+  "bg-card focus-visible:border-ring focus-visible:ring-ring/30 h-11 w-full min-w-0 rounded-md border border-input px-3 py-1 text-sm outline-none focus-visible:ring-3";
 
 export type BankHierarchyItem = {
   id: string;
@@ -54,6 +60,8 @@ const BankQuestionForm = ({
     hierarchy[0]?.id ??
     "";
 
+  const scheme = parseMarkingScheme(defaultValues?.markingScheme);
+
   const {
     handleSubmit,
     control,
@@ -73,11 +81,22 @@ const BankQuestionForm = ({
         (defaultValues?.difficulty as BankQuestionFormType["difficulty"]) ??
         "medium",
       topicId: defaultValues?.topicId ?? hierarchy[0]?.topics[0]?.id ?? "",
+      manualGrading:
+        defaultValues?.type === "short_answer" && scheme?.mode === "manual",
+      multiSelectRule:
+        scheme && defaultValues?.type === "multiple_choice" ?
+          resolveMultiSelectRule(scheme)
+        : "partial",
+      wrongPenalty: scheme?.wrongPenalty ?? 1,
     },
     mode: "all",
   });
 
   const topicId = useWatch({ control, name: "topicId" });
+  const type = useWatch({ control, name: "type" });
+  const manualGrading = useWatch({ control, name: "manualGrading" });
+  const multiSelectRule = useWatch({ control, name: "multiSelectRule" });
+  const isManual = type === "long_answer" || (type === "short_answer" && manualGrading);
 
   const selectedSubjectId = useMemo(() => {
     const fromTopic = hierarchy.find((s) =>
@@ -106,6 +125,9 @@ const BankQuestionForm = ({
     fd.set("points", String(data.points));
     fd.set("difficulty", data.difficulty ?? "medium");
     fd.set("topicId", data.topicId);
+    fd.set("manualGrading", data.manualGrading ? "true" : "false");
+    fd.set("multiSelectRule", data.multiSelectRule ?? "");
+    fd.set("wrongPenalty", data.wrongPenalty == null ? "" : String(data.wrongPenalty));
     try {
       await action(fd);
       toast.success(
@@ -299,14 +321,15 @@ const BankQuestionForm = ({
         render={({ field, fieldState }) => (
           <Field data-invalid={fieldState.invalid}>
             <FieldLabel htmlFor={field.name}>
-              Correct Answer (multi-select: one option per line; written:
-              comma-separated keywords)
+              {isManual ?
+                "Marking guidance for examiners (optional, never shown to candidates)"
+              : "Correct Answer (multi-select: one option per line; short answer: comma-separated keywords)"}
             </FieldLabel>
             <Textarea
               {...field}
               id={field.name}
               rows={3}
-              placeholder="Correct option text(s) or keywords"
+              placeholder={isManual ? "Model answer or rubric" : "Correct option text(s) or keywords"}
               aria-invalid={fieldState.invalid}
               className="bg-input/50 placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-ring/30 h-24 w-full min-w-0 resize-y rounded-3xl border border-transparent px-3 py-2 text-sm outline-none focus-visible:ring-3"
             />
@@ -314,6 +337,71 @@ const BankQuestionForm = ({
           </Field>
         )}
       />
+
+      {type === "short_answer" && (
+        <Controller
+          name="manualGrading"
+          control={control}
+          render={({ field }) => (
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={Boolean(field.value)}
+                onChange={(e) => field.onChange(e.target.checked)}
+                className="size-4"
+              />
+              Mark by hand instead of keyword matching
+            </label>
+          )}
+        />
+      )}
+
+      {type === "multiple_choice" && (
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Controller
+            name="multiSelectRule"
+            control={control}
+            render={({ field }) => (
+              <Field>
+                <FieldLabel htmlFor={field.name}>Multi-select marking</FieldLabel>
+                <select
+                  id={field.name}
+                  value={field.value ?? "partial"}
+                  onChange={(e) => field.onChange(e.target.value)}
+                  className={selectClass}>
+                  <option value="partial">Partial credit (wrong picks ignored)</option>
+                  <option value="partial_with_penalty">Partial credit with penalty</option>
+                  <option value="all_or_nothing">All or nothing</option>
+                </select>
+              </Field>
+            )}
+          />
+          {multiSelectRule === "partial_with_penalty" && (
+            <Controller
+              name="wrongPenalty"
+              control={control}
+              render={({ field, fieldState }) => (
+                <Field data-invalid={fieldState.invalid}>
+                  <FieldLabel htmlFor={field.name}>
+                    Penalty per wrong pick (0–1 of one option&apos;s credit)
+                  </FieldLabel>
+                  <Input
+                    id={field.name}
+                    type="number"
+                    min={0}
+                    max={1}
+                    step={0.25}
+                    value={String(field.value ?? "")}
+                    onChange={(e) => field.onChange(e.target.value)}
+                    aria-invalid={fieldState.invalid}
+                  />
+                  {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
+                </Field>
+              )}
+            />
+          )}
+        </div>
+      )}
 
       <Button
         className="w-fit"

@@ -25,6 +25,7 @@ export type CandidateResultPdfProps = {
   submittedAt: string | null;
   publishedAt: string;
   reportId: string;
+  feedback?: { question: number; score: number | null; points: number; text: string }[];
 };
 
 export const CandidateResultDocument = ({
@@ -36,6 +37,7 @@ export const CandidateResultDocument = ({
   submittedAt,
   publishedAt,
   reportId,
+  feedback = [],
 }: CandidateResultPdfProps) => (
   <Document>
     <Page
@@ -61,6 +63,23 @@ export const CandidateResultDocument = ({
         <Text style={styles.label}>Published</Text>
         <Text style={styles.value}>{publishedAt}</Text>
       </View>
+      {feedback.length > 0 && (
+        <View style={{ marginTop: 16 }}>
+          <Text style={{ fontFamily: "Helvetica-Bold", marginBottom: 6 }}>
+            Examiner feedback
+          </Text>
+          {feedback.map((f) => (
+            <View
+              key={f.question}
+              style={{ marginBottom: 6 }}>
+              <Text style={styles.label}>
+                Question {f.question} ({f.score ?? "—"} / {f.points})
+              </Text>
+              <Text>{f.text}</Text>
+            </View>
+          ))}
+        </View>
+      )}
       <Text style={styles.footer}>
         Report ID: {reportId}. Verify authenticity at the institution portal.
       </Text>

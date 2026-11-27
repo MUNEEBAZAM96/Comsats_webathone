@@ -49,7 +49,11 @@ const AssignProctors = ({
     if (selected.size === 0) return;
     setLoading(true);
     try {
-      await assignProctor(examId, Array.from(selected));
+      const res = await assignProctor(examId, Array.from(selected));
+      if (!res.ok) {
+        toast.error(res.error);
+        return;
+      }
       const added = available.filter((p) => selected.has(p.id));
       setAssignments((prev) => [
         ...added.map((p) => ({
@@ -62,17 +66,23 @@ const AssignProctors = ({
       ]);
       setAvailable((prev) => prev.filter((p) => !selected.has(p.id)));
       setSelected(new Set());
-      toast.success(`${added.length} proctor(s) assigned`);
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Failed to assign proctors");
+      toast.success(`${res.data.assigned} proctor(s) assigned`);
+    } catch {
+      toast.error("Failed to assign proctors");
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   const handleUnassign = async (proctorId: string) => {
     setRemoving(proctorId);
     try {
-      await unassignProctor(examId, proctorId);
+      const res = await unassignProctor(examId, proctorId);
+      if (!res.ok) {
+        toast.error(res.error);
+        setRemoving(null);
+        return;
+      }
       const removed = assignments.find((a) => a.proctorId === proctorId);
       if (removed) {
         setAvailable((prev) =>
@@ -83,8 +93,8 @@ const AssignProctors = ({
       }
       setAssignments((prev) => prev.filter((a) => a.proctorId !== proctorId));
       toast.success("Proctor removed");
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Failed to remove proctor");
+    } catch {
+      toast.error("Failed to remove proctor");
     }
     setRemoving(null);
   };

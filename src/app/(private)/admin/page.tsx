@@ -10,6 +10,7 @@ import { Badge } from "@/components/shadcnui/badge";
 import { DashboardLink } from "@/components/Dashboard/DashboardLink";
 import { Card, CardContent, CardHeader } from "@/components/shadcnui/card";
 import prisma from "@/lib/database/dbClient";
+import { formatScore } from "@/lib/exam/grading";
 import { requireRole } from "@/server/session";
 import { format } from "date-fns";
 import {
@@ -133,6 +134,7 @@ const AdminDashboardStats = async () => {
         id: true,
         status: true,
         autoScore: true,
+        totalScore: true,
         maxScore: true,
         submittedAt: true,
         user: { select: { name: true } },
@@ -257,12 +259,13 @@ const AdminDashboardStats = async () => {
                         </p>
                       </div>
                       <div className="flex shrink-0 flex-wrap items-center gap-2">
-                        {attempt.status !== "in_progress" &&
-                          attempt.autoScore !== null && (
-                            <span className="text-xs font-medium">
-                              {attempt.autoScore}/{attempt.maxScore}
-                            </span>
-                          )}
+                        {attempt.status !== "in_progress" && (
+                          <span className="text-xs font-medium">
+                            {attempt.totalScore === null ?
+                              "Marking pending"
+                            : `${formatScore(attempt.totalScore)}/${attempt.maxScore}`}
+                          </span>
+                        )}
                         <StatusBadge status={attempt.status} />
                       </div>
                     </div>

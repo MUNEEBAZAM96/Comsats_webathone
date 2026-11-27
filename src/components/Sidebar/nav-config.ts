@@ -34,6 +34,9 @@ export const getPageTitle = (pathname: string, groups: NavGroup[]) => {
     if (action === "assign") return "Assign Exam";
     if (action === "assign-proctor") return "Assign Proctors";
     if (action === "results") return "Exam Results";
+    if (action === "monitor") return "Monitor Exam";
+    if (action === "grading") return "Grading";
+    if (role === "student") return "Take Exam";
     return role === "proctor" ? "Monitor Exam" : "Exam Details";
   }
 

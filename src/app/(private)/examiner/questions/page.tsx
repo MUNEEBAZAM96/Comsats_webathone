@@ -5,6 +5,7 @@ import { BookOpenIcon, ChevronRightIcon, LayersIcon } from "lucide-react";
 import CreateSubjectDialog from "@/components/Bank/CreateSubjectDialog";
 import { Button } from "@/components/shadcnui/button";
 import { getSubjects } from "@/server/bankActions";
+import { requireRole } from "@/server/session";
 
 export const metadata: Metadata = {
   title: "Question Bank",
@@ -12,6 +13,7 @@ export const metadata: Metadata = {
 };
 
 const ExaminerQuestionBankPage = async () => {
+  await requireRole("examiner");
   const subjects = await getSubjects();
 
   return (

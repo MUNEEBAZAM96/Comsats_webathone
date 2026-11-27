@@ -1,7 +1,13 @@
 "use client";
 
+import { MAX_ANSWER_CHARS } from "@/lib/exam/syncSchemas";
 import { Textarea } from "../shadcnui/textarea";
 import { Label } from "../shadcnui/label";
+
+const wordCount = (text: string) => {
+  const trimmed = text.trim();
+  return trimmed ? trimmed.split(/\s+/).length : 0;
+};
 
 type QuestionCardProps = {
   question: {
@@ -126,11 +132,36 @@ export const QuestionCard = ({
           </div>
         );
 
+      case "long_answer":
+        return (
+          <div className="grid gap-1.5">
+            <Textarea
+              aria-labelledby={promptId}
+              aria-describedby={`${promptId}-count`}
+              maxLength={MAX_ANSWER_CHARS}
+              value={value}
+              onChange={(e) => onChange(e.target.value)}
+              placeholder="Write your answer…"
+              rows={14}
+              className="min-h-72 leading-relaxed"
+            />
+            <p
+              id={`${promptId}-count`}
+              className="text-muted-foreground flex justify-between gap-2 text-xs tabular-nums">
+              <span>Marked by an examiner.</span>
+              <span>
+                {wordCount(value)} {wordCount(value) === 1 ? "word" : "words"} ·{" "}
+                {value.length} / {MAX_ANSWER_CHARS} characters
+              </span>
+            </p>
+          </div>
+        );
+
       default:
         return (
           <Textarea
             aria-labelledby={promptId}
-            maxLength={50_000}
+            maxLength={MAX_ANSWER_CHARS}
             value={value}
             onChange={(e) => onChange(e.target.value)}
             placeholder="Type your answer..."

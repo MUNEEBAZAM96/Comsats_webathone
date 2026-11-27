@@ -348,7 +348,7 @@ const main = async () => {
     attempt = await attemptFor(ids.ongoing, student.id);
     check(
       "submitted and graded",
-      attempt?.status === "submitted" && attempt.totalScore === 8,
+      attempt?.status === "graded" && attempt.totalScore === 8,
       `status ${attempt?.status}, score ${attempt?.totalScore}/${attempt?.maxScore}`,
     );
     check(
@@ -401,9 +401,14 @@ const main = async () => {
       data: { startedAt: subMinutes(new Date(), 31) },
     });
     await skew.page.getByRole("radio", { name: "var", exact: true }).check();
-    await skew.page
-      .getByText(/could not be saved|Unsaved changes/)
-      .waitFor({ timeout: 10_000 });
+    // The closed queue either shows "Time is up…" or finalises straight away.
+    await Promise.race([
+      skew.page
+        .getByText(/Time is up|could not be saved|Unsaved changes/)
+        .first()
+        .waitFor({ timeout: 10_000 }),
+      skew.page.waitForURL(/\/student\/results\//, { timeout: 10_000 }),
+    ]);
     let after = await attemptFor(ids.expiry, student.id);
     check(
       "save after server deadline is rejected",

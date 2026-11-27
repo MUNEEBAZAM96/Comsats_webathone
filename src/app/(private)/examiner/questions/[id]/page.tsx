@@ -9,6 +9,7 @@ import {
   getBankQuestionById,
   updateBankQuestion,
 } from "@/server/bankActions";
+import { requireRole } from "@/server/session";
 
 export const metadata: Metadata = {
   title: "Edit Question",
@@ -20,6 +21,7 @@ const EditBankQuestionPage = async ({
 }: {
   params: Promise<{ id: string }>;
 }) => {
+  await requireRole("examiner");
   const { id } = await params;
   const [question, hierarchy] = await Promise.all([
     getBankQuestionById(id),
@@ -55,9 +57,11 @@ const EditBankQuestionPage = async ({
             | "multiple_choice"
             | "single_choice"
             | "true_false"
-            | "short_answer",
+            | "short_answer"
+            | "long_answer",
           options: question.options ?? "",
           answer: question.answer ?? "",
+          markingScheme: question.markingScheme ?? "",
           points: question.points,
           difficulty: (question.difficulty as "easy" | "medium" | "hard") ?? "medium",
           topicId: question.topicId,

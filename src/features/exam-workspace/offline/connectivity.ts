@@ -2,17 +2,45 @@
 
 import { useSyncExternalStore } from "react";
 
-const subscribe = (onChange: () => void) => {
-  window.addEventListener("online", onChange);
-  window.addEventListener("offline", onChange);
+/**
+ * `navigator.onLine` only knows about the network interface. A request that
+ * failed (captive portal, dead Wi-Fi, server unreachable) also counts as
+ * offline until the next request succeeds or the browser reports `online`.
+ */
+let lastRequestOk = true;
+const listeners = new Set<() => void>();
+let windowListenersAttached = false;
+
+const notify = () => {
+  for (const listener of listeners) listener();
+};
+
+const attachWindowListeners = () => {
+  if (windowListenersAttached || typeof window === "undefined") return;
+  windowListenersAttached = true;
+  window.addEventListener("online", () => {
+    lastRequestOk = true;
+    notify();
+  });
+  window.addEventListener("offline", notify);
+};
+
+export const reportNetworkResult = (ok: boolean) => {
+  if (ok === lastRequestOk) return;
+  lastRequestOk = ok;
+  notify();
+};
+
+export const isEffectivelyOnline = () =>
+  (typeof navigator === "undefined" || navigator.onLine) && lastRequestOk;
+
+const subscribe = (listener: () => void) => {
+  attachWindowListeners();
+  listeners.add(listener);
   return () => {
-    window.removeEventListener("online", onChange);
-    window.removeEventListener("offline", onChange);
+    listeners.delete(listener);
   };
 };
 
-const getSnapshot = () => navigator.onLine;
-const getServerSnapshot = () => true;
-
 export const useOnlineStatus = () =>
-  useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
+  useSyncExternalStore(subscribe, isEffectivelyOnline, () => true);

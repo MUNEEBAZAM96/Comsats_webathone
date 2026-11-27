@@ -1,0 +1,22 @@
+---
+description: Grading, manual marking, result publication and analytics (Phase 09)
+globs: src/server/gradingActions.ts,src/server/resultsActions.ts,src/lib/exam/grading.ts,src/lib/exam/markingScheme.ts,src/components/Grading/**,src/components/Results/**,src/features/analytics/**
+alwaysApply: false
+---
+
+# Grading and results
+
+- Grade from `AttemptQuestion` snapshots only (`gradeAnswer` in `src/lib/exam/grading.ts`). Never trust client scores, status or "isCorrect".
+- Manual questions: `long_answer`, scheme `mode: "manual"`, or `short_answer` without keywords (`isManualQuestion`). Blank manual answers score 0 and need no mark.
+- Multi-select rules: `all_or_nothing` | `partial` | `partial_with_penalty` (`wrongPenalty` 0–1, default 1). Missing rule derives from legacy `partialCredit`.
+- Attempt status: `submitted` while any manual mark is pending (`totalScore` null), then `graded`. `total = autoScore (non-manual, non-overridden) + manualScore`. Recompute with `recomputeAttemptTotals` inside a transaction after `lockAttempt` (`SELECT … FOR UPDATE`).
+- Scores step 0.25 within `0..points`; feedback ≤ 2000 chars; override reason 5–500 chars. Every mark, override, regrade, publish and unpublish writes a `GradeAudit` (unpublish/publish use `answerId = null`).
+- Marking is **blocked while results are published**; unpublish first. `regradeExam` keeps manual marks.
+- `publishResults` needs: not draft, ≥1 finished attempt, nothing in progress after the sweep, no pending manual marks, and either the window closed or every assigned candidate finished. Error text gives counts.
+- `unpublishResults`: admin any time; owning examiner within 24 h of publishing; reason ≥ 5 chars.
+- `resultReveal`: `none` (withheld) | `score_only` (totals, per-question scores, feedback; never keys) | `score_and_answers`. Editable (with `passMarkPercent`) until results are published (`updateResultSettings`).
+- Students see nothing scored before `resultsPublishedAt`; keys are never sent unless `score_and_answers` and published.
+- Permissions: `result:grade` / `result:publish` (admin, examiner) plus `assertCanManageExam`. Proctors read results only.
+- Analytics (`computeExamAnalytics`, pure): graded attempts only for score stats; discrimination uses top/bottom 27% (needs ≥ 2 graded). Incidents are context only, never evidence.
+- Reports/exports require publication for candidate reports; CSV/XLSX include auto/manual/total/percentage/status/gradedAt/submitSource.
+- Tests: `scripts/test-grading.ts`, `scripts/test-analytics.ts`, `scripts/e2e-phase07-09.ts`.

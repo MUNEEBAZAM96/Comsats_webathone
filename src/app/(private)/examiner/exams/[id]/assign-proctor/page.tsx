@@ -8,6 +8,7 @@ import {
   getAssignedProctors,
   getAvailableProctors,
 } from "@/server/proctorActions";
+import { requireRole } from "@/server/session";
 
 export const metadata: Metadata = {
   title: "Assign Proctors",
@@ -19,6 +20,7 @@ const ExaminerAssignProctorPage = async ({
 }: {
   params: Promise<{ id: string }>;
 }) => {
+  await requireRole("examiner");
   const { id } = await params;
   const exam = await getExamById(id);
   const assignments = await getAssignedProctors(id);

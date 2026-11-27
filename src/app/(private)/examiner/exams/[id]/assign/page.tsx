@@ -8,6 +8,7 @@ import {
   getAssignedStudents,
   getAvailableStudents,
 } from "@/server/assignmentActions";
+import { requireRole } from "@/server/session";
 
 export const metadata: Metadata = {
   title: "Assign Exam",
@@ -19,6 +20,7 @@ const ExaminerAssignExamPage = async ({
 }: {
   params: Promise<{ id: string }>;
 }) => {
+  await requireRole("examiner");
   const { id } = await params;
   const exam = await getExamById(id);
   const assignments = await getAssignedStudents(id);

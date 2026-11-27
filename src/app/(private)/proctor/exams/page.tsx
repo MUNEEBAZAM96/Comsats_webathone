@@ -4,6 +4,7 @@ import { EyeIcon, FileTextIcon } from "lucide-react";
 import { Button } from "@/components/shadcnui/button";
 import { Card } from "@/components/shadcnui/card";
 import { getProctorExams } from "@/server/proctorActions";
+import { requireRole } from "@/server/session";
 
 export const metadata: Metadata = {
   title: "Assigned Exams",
@@ -11,6 +12,7 @@ export const metadata: Metadata = {
 };
 
 const ProctorExamsPage = async () => {
+  await requireRole("proctor");
   const exams = await getProctorExams();
 
   return (
@@ -44,7 +46,7 @@ const ProctorExamsPage = async () => {
                   <span>{exam._count.assignments} candidates</span>
                   <span>{exam._count.attempts} attempts</span>
                   <span className="rounded-full bg-muted px-2 py-0.5 text-xs capitalize">
-                    {exam.status}
+                    {exam.effectiveStatus}
                   </span>
                 </div>
               </div>

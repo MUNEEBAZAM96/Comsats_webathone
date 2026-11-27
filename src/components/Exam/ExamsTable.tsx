@@ -2,6 +2,8 @@
 
 import { ResponsiveTable } from "@/components/Workspace/ResponsiveTable";
 import {
+  ActivityIcon,
+  ClipboardCheckIcon,
   EditIcon,
   EyeIcon,
   Loader2Icon,
@@ -29,6 +31,7 @@ type ExamRow = {
   id: string;
   title: string;
   status: string;
+  effectiveStatus?: string;
   duration: number;
   createdAt: Date;
   _count: { questions: number; assignments?: number };
@@ -104,11 +107,11 @@ const ExamsTable = ({ exams, basePath }: ExamsTableProps) => {
               <td className="px-4 py-3">
                 <span
                   className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                    exam.status === "published" ?
-                      "bg-info-surface text-info"
+                    exam.effectiveStatus === "ongoing" ? "bg-warning-surface text-warning"
+                    : exam.status === "published" ? "bg-info-surface text-info"
                     : "bg-muted text-muted-foreground"
                   }`}>
-                  {exam.status}
+                  {exam.effectiveStatus ?? exam.status}
                 </span>
               </td>
               <td className="text-muted-foreground px-4 py-3">
@@ -132,6 +135,32 @@ const ExamsTable = ({ exams, basePath }: ExamsTableProps) => {
                       <EyeIcon className="size-4" />
                     </Button>
                   </Link>
+                  {exam.status !== "draft" && (
+                    <>
+                      <Link
+                        href={`${basePath}/exams/${exam.id}/monitor` as Route}
+                        aria-label={`Monitor ${exam.title}`}
+                        title="Monitor">
+                        <Button
+                          variant="outline"
+                          size="icon-lg"
+                          tabIndex={-1}>
+                          <ActivityIcon className="size-4" />
+                        </Button>
+                      </Link>
+                      <Link
+                        href={`${basePath}/exams/${exam.id}/grading` as Route}
+                        aria-label={`Grade ${exam.title}`}
+                        title="Grading">
+                        <Button
+                          variant="outline"
+                          size="icon-lg"
+                          tabIndex={-1}>
+                          <ClipboardCheckIcon className="size-4" />
+                        </Button>
+                      </Link>
+                    </>
+                  )}
                   {exam.status === "draft" && (
                     <>
                       <Link href={`${basePath}/exams/${exam.id}` as Route}>

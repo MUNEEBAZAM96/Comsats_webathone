@@ -4,6 +4,7 @@ import { PlusIcon } from "lucide-react";
 import { Button } from "@/components/shadcnui/button";
 import ExamsTable from "@/components/Exam/ExamsTable";
 import { getExams } from "@/server/examActions";
+import { requireRole } from "@/server/session";
 
 export const metadata: Metadata = {
   title: "My Exams",
@@ -11,6 +12,7 @@ export const metadata: Metadata = {
 };
 
 const ExaminerExamsPage = async () => {
+  await requireRole("examiner");
   const exams = await getExams();
 
   return (
